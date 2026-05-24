@@ -1,0 +1,12 @@
+.venv/
+.idea/
+__pycache__/
+*.py[cod]
+
+data/raw/*.mdb
+data/raw/*.accdb
+data/exports/*.csv
+reports/*.csv
+reports/*.txt
+reports/*.xlsx
+!reports/README.txt
