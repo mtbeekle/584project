@@ -9,4 +9,3 @@ data/exports/*.csv
 reports/*.csv
 reports/*.txt
 reports/*.xlsx
-!reports/README.txt
