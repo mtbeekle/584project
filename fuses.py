@@ -1,136 +1,72 @@
 import pandas as pd
 
 
-def check_capacitors(capacitors, sections):
+def check_open_fuses(fuses, sections):
 
     results = {}
 
     print("\n========================")
-    print("CAPACITOR COLUMNS")
+    print("FUSE COLUMNS")
     print("========================")
 
-    print(capacitors.columns.tolist())
+    print(fuses.columns.tolist())
 
-    # ==================================================
-    # PHASE MISMATCH CHECK
-    # ==================================================
+    # ==========================================
+    # OPEN FUSES
+    # ==========================================
 
-    capacitor_phase_check = capacitors.merge(
-        sections[['SectionId', 'SectionPhases']],
-        on='SectionId',
-        how='left'
+    open_fuses = fuses[
+        fuses['FuseIsOpen'] == True
+    ]
+
+    results['open_fuses'] = open_fuses
+
+    # ==========================================
+    # UNFED SECTIONS
+    # ==========================================
+
+    unfed_sections = sections[
+        sections['IsFed'] == False
+    ]
+
+    results['unfed_sections'] = unfed_sections
+
+    # ==========================================
+    # OPEN FUSE SECTIONS
+    # ==========================================
+
+    open_fuse_section_ids = set(
+        open_fuses['SectionId']
     )
 
-    phase_mismatch_rows = []
+    # Sections that contain open fuses
+    open_fuse_sections = sections[
+        sections['SectionId'].isin(open_fuse_section_ids)
+    ]
 
-    for _, row in capacitor_phase_check.iterrows():
+    results['open_fuse_sections'] = open_fuse_sections
 
-        cap_phases = str(row['ConnectedPhases']).upper()
-        line_phases = str(row['SectionPhases']).upper()
+    # ==========================================
+    # OPEN FUSE + UNFED
+    # ==========================================
 
-        if not set(cap_phases).issubset(set(line_phases)):
+    unfed_due_to_open_fuse = unfed_sections[
+        unfed_sections['SectionId'].isin(open_fuse_section_ids)
+    ]
 
-            temp = row.copy()
+    results['unfed_due_to_open_fuse'] = unfed_due_to_open_fuse
 
-            fixed_kvar = (
-                row['FixedKvarPhase1'] +
-                row['FixedKvarPhase2'] +
-                row['FixedKvarPhase3']
-            )
-
-            switched_kvar = (
-                row['Module1KvarPerPhase'] +
-                row['Module2KvarPerPhase'] +
-                row['Module3KvarPerPhase']
-            )
-
-            temp['TotalFixedKvar'] = fixed_kvar
-            temp['TotalSwitchedKvar'] = switched_kvar
-            temp['TotalKvar'] = fixed_kvar + switched_kvar
-            temp['Issue'] = 'Phase Mismatch'
-
-            phase_mismatch_rows.append(temp)
-
-    phase_mismatches = pd.DataFrame(phase_mismatch_rows)
-
-    # ==================================================
-    # BUILD GENERAL QA TABLE
-    # ==================================================
-
-    capacitor_issue_rows = []
-
-    for _, row in capacitors.iterrows():
-
-        fixed_kvar = (
-            row['FixedKvarPhase1'] +
-            row['FixedKvarPhase2'] +
-            row['FixedKvarPhase3']
-        )
-
-        switched_kvar = (
-            row['Module1KvarPerPhase'] +
-            row['Module2KvarPerPhase'] +
-            row['Module3KvarPerPhase']
-        )
-
-        total_kvar = fixed_kvar + switched_kvar
-
-        issues = []
-
-        # ----------------------------------------------
-        # No kvar configured
-        # ----------------------------------------------
-
-        if fixed_kvar == 0 and switched_kvar == 0:
-            issues.append("No KVAR")
-
-        # ----------------------------------------------
-        # Capacitor > 1 MVAR
-        # ----------------------------------------------
-
-        if total_kvar > 1000:
-            issues.append(">1 MVAR")
-
-        if issues:
-
-            temp = row.copy()
-
-            temp['TotalFixedKvar'] = fixed_kvar
-            temp['TotalSwitchedKvar'] = switched_kvar
-            temp['TotalKvar'] = total_kvar
-            temp['Issue'] = "; ".join(issues)
-
-            capacitor_issue_rows.append(temp)
-
-    capacitor_issues = pd.DataFrame(capacitor_issue_rows)
-
-    # ==================================================
-    # COMBINE ALL ISSUES
-    # ==================================================
-
-    if not phase_mismatches.empty:
-
-        capacitor_issues = pd.concat(
-            [
-                capacitor_issues,
-                phase_mismatches
-            ],
-            ignore_index=True
-        )
-
-    results['capacitor_issues'] = capacitor_issues
-
-    # ==================================================
+    # ==========================================
     # SUMMARY
-    # ==================================================
+    # ==========================================
 
     print("\n========================")
-    print("CAPACITOR SUMMARY")
+    print("FUSE SUMMARY")
     print("========================")
 
-    print(
-        f"Total capacitor issues found: "
-        f"{len(capacitor_issues)}"
-    )
+    print(f"Open Fuses: {len(open_fuses)}")
+    print(f"Unfed Sections: {len(unfed_sections)}")
+    print(f"Open Fuse Sections: {len(open_fuse_sections)}")
+    print(f"Open Fuse + Unfed: {len(unfed_due_to_open_fuse)}")
 
     return results
