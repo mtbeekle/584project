@@ -49,10 +49,7 @@ print("========================\n")
 
 cursor = conn.cursor()
 
-tables = []
-
 for row in cursor.tables(tableType='TABLE'):
-    tables.append(row.table_name)
     print(row.table_name)
 
 
@@ -103,13 +100,11 @@ print(f"Fuses Loaded: {len(fuses)}")
 print("\n========================")
 print("NODE COLUMNS")
 print("========================")
-
 print(nodes.columns.tolist())
 
 print("\n========================")
 print("SECTION COLUMNS")
 print("========================")
-
 print(sections.columns.tolist())
 
 
@@ -119,9 +114,15 @@ print(sections.columns.tolist())
 
 missing_results = check_missing_data(sections)
 
-capacitor_results = check_capacitors(capacitors)
+capacitor_results = check_capacitors(
+    capacitors,
+    sections
+)
 
-fuse_results = check_open_fuses(fuses)
+fuse_results = check_open_fuses(
+    fuses,
+    sections
+)
 
 
 # =====================================================
@@ -129,7 +130,7 @@ fuse_results = check_open_fuses(fuses)
 # =====================================================
 
 print("\n========================")
-print("MISSING DATA CHECKS")
+print("VALIDATION RESULTS")
 print("========================\n")
 
 print(
@@ -158,28 +159,24 @@ print(
 )
 
 print(
-    "Invalid fixed capacitor kvar:",
-    len(capacitor_results['invalid_fixed_kvar'])
+    "Capacitor issues:",
+    len(capacitor_results['capacitor_issues'])
 )
 
 print(
-    "Invalid module capacitor kvar:",
-    len(capacitor_results['invalid_module_kvar'])
-)
-
-print(
-    "Open fuses found:",
+    "Open fuses:",
     len(fuse_results['open_fuses'])
+)
+
+print(
+    "Unfed sections:",
+    len(fuse_results['unfed_sections'])
 )
 
 
 # =====================================================
 # EXPORT RESULTS
 # =====================================================
-
-print("\n========================")
-print("EXPORTING RESULTS")
-print("========================")
 
 output_file = (
     r"C:\Users\Corey\Desktop\synergi_validation_results.xlsx"
@@ -225,20 +222,14 @@ with pd.ExcelWriter(output_file) as writer:
     # CAPACITORS
     # ==========================================
 
-    capacitor_results['invalid_fixed_kvar'].to_excel(
+    capacitor_results['capacitor_issues'].to_excel(
         writer,
-        sheet_name='InvalidFixedCapKvar',
-        index=False
-    )
-
-    capacitor_results['invalid_module_kvar'].to_excel(
-        writer,
-        sheet_name='InvalidModuleCapKvar',
+        sheet_name='Capacitors',
         index=False
     )
 
     # ==========================================
-    # OPEN FUSES
+    # FUSES
     # ==========================================
 
     fuse_results['open_fuses'].to_excel(
@@ -247,11 +238,17 @@ with pd.ExcelWriter(output_file) as writer:
         index=False
     )
 
+    fuse_results['unfed_sections'].to_excel(
+        writer,
+        sheet_name='UnfedSections',
+        index=False
+    )
+
 print(f"\nValidation report exported to:\n{output_file}")
 
 
 # =====================================================
-# CLOSE MDB CONNECTION
+# CLOSE CONNECTION
 # =====================================================
 
 conn.close()
