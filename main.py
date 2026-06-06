@@ -5,6 +5,7 @@ import pandas as pd
 from missingdata import check_missing_data
 from capacitors import check_capacitors
 from fuses import check_open_fuses
+from conductorheight import check_conductor_height
 
 
 # =====================================================
@@ -124,6 +125,10 @@ fuse_results = check_open_fuses(
     sections
 )
 
+height_results = check_conductor_height(
+    sections
+)
+
 
 # =====================================================
 # PRINT RESULTS
@@ -171,6 +176,11 @@ print(
 print(
     "Unfed sections:",
     len(fuse_results['unfed_sections'])
+)
+
+print(
+    "Conductor height issues:",
+    len(height_results['conductor_height_issues'])
 )
 
 
@@ -241,6 +251,16 @@ with pd.ExcelWriter(output_file) as writer:
     fuse_results['unfed_sections'].to_excel(
         writer,
         sheet_name='UnfedSections',
+        index=False
+    )
+
+    # ==========================================
+    # CONDUCTOR HEIGHT
+    # ==========================================
+
+    height_results['conductor_height_issues'].to_excel(
+        writer,
+        sheet_name='ConductorHeight',
         index=False
     )
 
