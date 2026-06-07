@@ -40,6 +40,7 @@ The current scripts require:
 
     pandas
     pyodbc
+    openpyxl
 
 These are already installed in the current virtual environment.
 
