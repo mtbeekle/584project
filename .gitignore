@@ -9,3 +9,4 @@ data/exports/*.csv
 data/exports/*.csv
 data/exports/*.txt
 data/exports/*.xlsx
+data/exports/*.graphml
