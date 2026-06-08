@@ -1,40 +1,18 @@
 import argparse
 from pathlib import Path
 
-import pyodbc
-import pandas as pd
-
 from missingdata import check_missing_data
 from capacitors import check_capacitors
 from fuses import check_open_fuses
 from conductorheight import check_conductor_height
 from loads import check_connected_kva
+from mdb_utils import connect_to_mdb, find_default_mdb_file, list_user_tables, read_table
 from report_writer import write_validation_report
 
 
 PROJECT_DIR = Path(__file__).resolve().parent
-RAW_DATA_DIR = PROJECT_DIR / "data" / "raw"
 EXPORTS_DIR = PROJECT_DIR / "data" / "exports"
 DEFAULT_OUTPUT_FILE = EXPORTS_DIR / "synergi_validation_results.xlsx"
-
-
-def find_default_mdb_file() -> Path:
-    mdb_files = sorted(RAW_DATA_DIR.glob("*.mdb")) + sorted(RAW_DATA_DIR.glob("*.accdb"))
-
-    if not mdb_files:
-        raise FileNotFoundError(
-            "No .mdb or .accdb file found in "
-            f"{RAW_DATA_DIR}. Put the Synergi export there or pass --mdb-file."
-        )
-
-    if len(mdb_files) > 1:
-        files = "\n".join(f"  - {path.name}" for path in mdb_files)
-        raise ValueError(
-            "More than one Access database was found in "
-            f"{RAW_DATA_DIR}. Pass --mdb-file to choose one:\n{files}"
-        )
-
-    return mdb_files[0]
 
 
 def parse_args() -> argparse.Namespace:
@@ -59,13 +37,9 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def quote_access_name(name: str) -> str:
-    return "[" + name.replace("]", "]]") + "]"
-
-
-def load_table(conn: pyodbc.Connection, table_name: str) -> pd.DataFrame:
+def load_table(connection, table_name: str):
     try:
-        return pd.read_sql(f"SELECT * FROM {quote_access_name(table_name)}", conn)
+        return read_table(connection, table_name)
     except Exception as exc:
         raise RuntimeError(f"Could not load required table [{table_name}]") from exc
 
@@ -86,12 +60,7 @@ def main() -> None:
 
     print(f"MDB file found: {mdb_file}")
 
-    conn_str = (
-        r"DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};"
-        rf"DBQ={mdb_file.resolve()};"
-    )
-
-    with pyodbc.connect(conn_str) as conn:
+    with connect_to_mdb(mdb_file) as conn:
         print("Connected successfully!")
 
         # =====================================================
@@ -102,10 +71,8 @@ def main() -> None:
         print("TABLES IN MDB")
         print("========================\n")
 
-        cursor = conn.cursor()
-
-        for row in cursor.tables(tableType='TABLE'):
-            print(row.table_name)
+        for table_name in list_user_tables(conn):
+            print(table_name)
 
         # =====================================================
         # LOAD TABLES
