@@ -53,6 +53,7 @@ def build_report_tables(
     fuse_results: dict[str, pd.DataFrame],
     height_results: dict[str, pd.DataFrame],
     load_results: dict[str, pd.DataFrame],
+    topology_results: dict[str, pd.DataFrame],
 ) -> dict[str, pd.DataFrame]:
     report_tables = {
         "MissingConnectivity": missing_results["missing_connectivity"],
@@ -63,6 +64,7 @@ def build_report_tables(
         "CapacitorIssues": capacitor_results["capacitor_issues"],
         "OpenFuses": fuse_results["open_fuses"],
         "UnfedSections": fuse_results["unfed_sections"],
+        "LoopSections": topology_results["loop_sections"],
         "ConductorHeight": height_results["conductor_height_issues"],
         "NoConnectedKVA": load_results["no_connected_kva"],
     }
@@ -89,6 +91,7 @@ def write_validation_report(
     fuse_results: dict[str, pd.DataFrame],
     height_results: dict[str, pd.DataFrame],
     load_results: dict[str, pd.DataFrame],
+    topology_results: dict[str, pd.DataFrame],
 ) -> None:
     output_file.parent.mkdir(parents=True, exist_ok=True)
     report_tables = build_report_tables(
@@ -97,6 +100,7 @@ def write_validation_report(
         fuse_results,
         height_results,
         load_results,
+        topology_results,
     )
 
     with pd.ExcelWriter(output_file) as writer:

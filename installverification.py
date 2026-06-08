@@ -41,6 +41,13 @@ def main() -> int:
         print("openpyxl: FAILED", exc)
         failures.append("openpyxl")
 
+    try:
+        import networkx
+        print("networkx: OK", networkx.__version__)
+    except Exception as exc:
+        print("networkx: FAILED", exc)
+        failures.append("networkx")
+
     print_section("ODBC Drivers")
     if pyodbc is None:
         print("Could not inspect ODBC drivers because pyodbc is unavailable.")
