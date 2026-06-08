@@ -14,6 +14,13 @@ The current project requires:
 - `pandas`
 - `pyodbc`
 - `openpyxl`
+- `networkx`
+
+Install them with:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
 
 ## ODBC Driver
 Required driver name:
