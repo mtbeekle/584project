@@ -1,11 +1,24 @@
-import pandas as pd
+#import pandas as pd
 
-from validation_utils import add_issue_columns
+from validation_utils import add_issue_columns, validate_required_columns
 
 
 def check_missing_data(sections):
 
     results = {}
+
+    validate_required_columns(
+        sections,
+        "sections",
+        [
+            "SectionId",
+            "FromNodeId",
+            "ToNodeId",
+            "SectionLength_MUL",
+            "SectionPhases",
+            "PhaseConductorId",
+        ],
+    )
 
     # =========================
     # Missing connectivity
