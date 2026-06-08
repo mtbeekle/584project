@@ -1,5 +1,7 @@
 import pandas as pd
 
+from validation_utils import add_issue_columns
+
 
 def check_capacitors(capacitors, sections):
 
@@ -51,7 +53,21 @@ def check_capacitors(capacitors, sections):
 
             phase_mismatch_rows.append(temp)
 
-    phase_mismatches = pd.DataFrame(phase_mismatch_rows)
+    phase_mismatches = add_issue_columns(
+        pd.DataFrame(phase_mismatch_rows),
+        rule_id="VR5",
+        category="Component / Device",
+        severity="Warning",
+        element_type="Capacitor",
+        element_id="UniqueDeviceId",
+        issue="Phase mismatch",
+        description=(
+            "Capacitor connected phases are not a subset of the associated section phases."
+        ),
+        recommended_action=(
+            "Review ConnectedPhases and the linked section SectionPhases values."
+        ),
+    )
 
     # ==================================================
     # BUILD GENERAL QA TABLE
@@ -102,7 +118,18 @@ def check_capacitors(capacitors, sections):
 
             capacitor_issue_rows.append(temp)
 
-    capacitor_issues = pd.DataFrame(capacitor_issue_rows)
+    capacitor_issues = add_issue_columns(
+        pd.DataFrame(capacitor_issue_rows),
+        rule_id="VR5",
+        category="Component / Device",
+        severity="Warning",
+        element_type="Capacitor",
+        element_id="UniqueDeviceId",
+        description="Capacitor configuration is outside expected validation limits.",
+        recommended_action=(
+            "Review capacitor KVAR settings and confirm the converted model values."
+        ),
+    )
 
     # ==================================================
     # COMBINE ALL ISSUES

@@ -1,5 +1,7 @@
 import pandas as pd
 
+from validation_utils import add_issue_columns
+
 
 def check_conductor_height(sections):
 
@@ -67,6 +69,20 @@ def check_conductor_height(sections):
             issue_rows.append(temp)
 
     conductor_height_issues = pd.DataFrame(issue_rows)
+    conductor_height_issues = add_issue_columns(
+        conductor_height_issues,
+        rule_id="VR6",
+        category="Component / Device",
+        severity="Warning",
+        element_type="Section",
+        element_id="SectionId",
+        description=(
+            "Conductor height sign does not match the inferred underground or overhead conductor type."
+        ),
+        recommended_action=(
+            "Review PhaseConductorId and AveHeightAboveGround_MUL for the section."
+        ),
+    )
 
     results['conductor_height_issues'] = (
         conductor_height_issues

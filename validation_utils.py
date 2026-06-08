@@ -77,6 +77,8 @@ def add_issue_columns(
     rule_id: str | None = None,
     category: str | None = None,
     severity: str | None = None,
+    element_type: str | None = None,
+    element_id: str | pd.Series | None = None,
     issue: str | None = None,
     description: str | None = None,
     recommended_action: str | None = None,
@@ -89,6 +91,15 @@ def add_issue_columns(
         issue_dataframe["Category"] = category
     if severity is not None:
         issue_dataframe["Severity"] = severity
+    if element_type is not None:
+        issue_dataframe["ElementType"] = element_type
+    if element_id is not None:
+        if isinstance(element_id, pd.Series):
+            issue_dataframe["ElementID"] = element_id
+        elif element_id in issue_dataframe.columns:
+            issue_dataframe["ElementID"] = issue_dataframe[element_id]
+        else:
+            issue_dataframe["ElementID"] = element_id
     if issue is not None:
         issue_dataframe["Issue"] = issue
     if description is not None:
