@@ -1,6 +1,7 @@
 import pandas as pd
 
-from validation_utils import add_issue_columns
+from rules import get_rule
+from validation_utils import add_issue_columns, add_rule_columns
 
 
 def check_capacitors(capacitors, sections):
@@ -53,27 +54,19 @@ def check_capacitors(capacitors, sections):
 
             phase_mismatch_rows.append(temp)
 
-    phase_mismatches = add_issue_columns(
+    phase_mismatches = add_rule_columns(
         pd.DataFrame(phase_mismatch_rows),
-        rule_id="VR5",
-        category="Component / Device",
-        severity="Warning",
+        rule=get_rule("VR7"),
         element_type="Capacitor",
         element_id="UniqueDeviceId",
-        issue="Phase mismatch",
-        description=(
-            "Capacitor connected phases are not a subset of the associated section phases."
-        ),
-        recommended_action=(
-            "Review ConnectedPhases and the linked section SectionPhases values."
-        ),
     )
 
     # ==================================================
     # BUILD GENERAL QA TABLE
     # ==================================================
 
-    capacitor_issue_rows = []
+    capacitor_rating_issue_rows = []
+    capacitor_high_mvar_issue_rows = []
 
     for _, row in capacitors.iterrows():
 
@@ -91,44 +84,59 @@ def check_capacitors(capacitors, sections):
 
         total_kvar = fixed_kvar + switched_kvar
 
-        issues = []
-
         # ----------------------------------------------
         # No kvar configured
         # ----------------------------------------------
 
         if fixed_kvar == 0 and switched_kvar == 0:
-            issues.append("No KVAR")
+            temp = row.copy()
+
+            temp['TotalFixedKvar'] = fixed_kvar
+            temp['TotalSwitchedKvar'] = switched_kvar
+            temp['TotalKvar'] = total_kvar
+
+            capacitor_rating_issue_rows.append(temp)
 
         # ----------------------------------------------
         # Capacitor > 1 MVAR
         # ----------------------------------------------
 
         if total_kvar > 1000:
-            issues.append(">1 MVAR")
-
-        if issues:
-
             temp = row.copy()
 
             temp['TotalFixedKvar'] = fixed_kvar
             temp['TotalSwitchedKvar'] = switched_kvar
             temp['TotalKvar'] = total_kvar
-            temp['Issue'] = "; ".join(issues)
 
-            capacitor_issue_rows.append(temp)
+            capacitor_high_mvar_issue_rows.append(temp)
 
-    capacitor_issues = add_issue_columns(
-        pd.DataFrame(capacitor_issue_rows),
-        rule_id="VR5",
+    capacitor_rating_issues = add_rule_columns(
+        pd.DataFrame(capacitor_rating_issue_rows),
+        rule=get_rule("VR5"),
+        element_type="Capacitor",
+        element_id="UniqueDeviceId",
+    )
+
+    capacitor_high_mvar_issues = add_issue_columns(
+        pd.DataFrame(capacitor_high_mvar_issue_rows),
+        rule_id="",
         category="Component / Device",
         severity="Warning",
         element_type="Capacitor",
         element_id="UniqueDeviceId",
-        description="Capacitor configuration is outside expected validation limits.",
+        issue="Capacitor greater than 1 MVAR",
+        description="Capacitor configured rating is greater than 1 MVAR.",
         recommended_action=(
             "Review capacitor KVAR settings and confirm the converted model values."
         ),
+    )
+
+    capacitor_issues = pd.concat(
+        [
+            capacitor_rating_issues,
+            capacitor_high_mvar_issues,
+        ],
+        ignore_index=True
     )
 
     # ==================================================

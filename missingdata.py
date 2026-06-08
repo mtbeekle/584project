@@ -16,8 +16,8 @@ def check_missing_data(sections):
             sections['FromNodeId'].isna() |
             sections['ToNodeId'].isna()
         ],
-        rule_id="VR1",
-        category="Topology",
+        rule_id="",
+        category="Data Quality",
         severity="Error",
         element_type="Section",
         element_id="SectionId",
@@ -39,7 +39,7 @@ def check_missing_data(sections):
             sections['SectionLength_MUL'].isna() |
             (sections['SectionLength_MUL'] <= 0)
         ],
-        rule_id="VR2",
+        rule_id="",
         category="Data Quality",
         severity="Error",
         element_type="Section",
@@ -59,7 +59,7 @@ def check_missing_data(sections):
         sections[
             sections['SectionPhases'].isna()
         ],
-        rule_id="VR2",
+        rule_id="",
         category="Data Quality",
         severity="Error",
         element_type="Section",
@@ -79,7 +79,7 @@ def check_missing_data(sections):
         sections[
             sections['PhaseConductorId'].isna()
         ],
-        rule_id="VR2",
+        rule_id="",
         category="Data Quality",
         severity="Warning",
         element_type="Section",
@@ -102,7 +102,7 @@ def check_missing_data(sections):
                 keep=False
             )
         ],
-        rule_id="VR3",
+        rule_id="",
         category="Data Integrity",
         severity="Error",
         element_type="Section",

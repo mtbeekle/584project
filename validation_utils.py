@@ -1,5 +1,7 @@
 import pandas as pd
 
+from rules import RuleDefinition
+
 
 TRUE_VALUES = {
     True,
@@ -108,3 +110,22 @@ def add_issue_columns(
         issue_dataframe["RecommendedAction"] = recommended_action
 
     return issue_dataframe
+
+
+def add_rule_columns(
+    dataframe: pd.DataFrame,
+    rule: RuleDefinition,
+    element_type: str | None = None,
+    element_id: str | pd.Series | None = None,
+) -> pd.DataFrame:
+    return add_issue_columns(
+        dataframe,
+        rule_id=rule.rule_id,
+        category=rule.category,
+        severity=rule.severity,
+        element_type=element_type,
+        element_id=element_id,
+        issue=rule.issue,
+        description=rule.description,
+        recommended_action=rule.recommended_action,
+    )

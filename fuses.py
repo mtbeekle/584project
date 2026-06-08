@@ -1,10 +1,11 @@
 import pandas as pd
 
+from rules import get_rule
 from validation_utils import (
     validate_required_columns,
     is_true_series,
     is_false_series,
-    add_issue_columns,
+    add_rule_columns,
 )
 
 
@@ -34,16 +35,11 @@ def check_open_fuses(fuses: pd.DataFrame, sections: pd.DataFrame) -> dict:
     # ==========================================
     # Implements charter rule VR4 for open protective devices.
 
-    open_fuses = add_issue_columns(
+    open_fuses = add_rule_columns(
         fuses[is_true_series(fuses["FuseIsOpen"])],
-        rule_id="VR4",
-        category="Component / Device",
-        severity="Warning",
-        issue="Open fuse",
-        description="Fuse is open in converted model; review device status.",
-        recommended_action=(
-            "Confirm whether the fuse should be open in the normal converted model."
-        ),
+        rule=get_rule("VR4"),
+        element_type="Fuse",
+        element_id="UniqueDeviceId",
     )
 
     results['open_fuses'] = open_fuses
@@ -53,16 +49,11 @@ def check_open_fuses(fuses: pd.DataFrame, sections: pd.DataFrame) -> dict:
     # ==========================================
     # Preliminary VR1 topology check using MDB IsFed, not a full graph traversal.
 
-    unfed_sections = add_issue_columns(
+    unfed_sections = add_rule_columns(
         sections[is_false_series(sections["IsFed"])],
-        rule_id="VR1",
-        category="Topology",
-        severity="Error",
-        issue="Unfed section",
-        description="Section is marked unfed or disconnected from a valid source path.",
-        recommended_action=(
-            "Review upstream connectivity, source path, and switching/fuse status."
-        ),
+        rule=get_rule("VR1"),
+        element_type="Section",
+        element_id="SectionId",
     )
 
     results['unfed_sections'] = unfed_sections
@@ -76,17 +67,11 @@ def check_open_fuses(fuses: pd.DataFrame, sections: pd.DataFrame) -> dict:
     )
 
     # Sections that contain open fuses
-    open_fuse_sections = add_issue_columns(
+    open_fuse_sections = add_rule_columns(
         sections[sections['SectionId'].isin(open_fuse_section_ids)],
-        rule_id="VR4",
-        category="Component / Device",
-        severity="Warning",
-        issue="Section contains open fuse",
-        description="Section contains a fuse marked open in the converted model.",
-        recommended_action=(
-            "Review the fuse status and confirm whether the connected section "
-            "should be energized in the normal converted model."
-        ),
+        rule=get_rule("VR4"),
+        element_type="Section",
+        element_id="SectionId",
     )
 
     results['open_fuse_sections'] = open_fuse_sections
@@ -95,19 +80,11 @@ def check_open_fuses(fuses: pd.DataFrame, sections: pd.DataFrame) -> dict:
     # OPEN FUSE + UNFED
     # ==========================================
 
-    unfed_due_to_open_fuse = add_issue_columns(
+    unfed_due_to_open_fuse = add_rule_columns(
         unfed_sections[unfed_sections['SectionId'].isin(open_fuse_section_ids)],
-        rule_id="VR1/VR4",
-        category="Topology",
-        severity="Error",
-        issue="Unfed section contains open fuse",
-        description=(
-            "Section is marked unfed and contains a fuse marked open in the converted model."
-        ),
-        recommended_action=(
-            "Review whether the open fuse is causing the section to appear unfed, "
-            "or whether there is an additional upstream connectivity issue."
-        ),
+        rule=get_rule("VR1"),
+        element_type="Section",
+        element_id="SectionId",
     )
 
     results['unfed_due_to_open_fuse'] = unfed_due_to_open_fuse
