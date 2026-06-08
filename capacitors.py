@@ -1,12 +1,33 @@
 import pandas as pd
 
 from rules import get_rule
-from validation_utils import add_issue_columns, add_rule_columns
+from validation_utils import add_issue_columns, add_rule_columns, validate_required_columns
 
 
 def check_capacitors(capacitors, sections):
 
     results = {}
+
+    validate_required_columns(
+        capacitors,
+        "capacitors",
+        [
+            "SectionId",
+            "UniqueDeviceId",
+            "ConnectedPhases",
+            "FixedKvarPhase1",
+            "FixedKvarPhase2",
+            "FixedKvarPhase3",
+            "Module1KvarPerPhase",
+            "Module2KvarPerPhase",
+            "Module3KvarPerPhase",
+        ],
+    )
+    validate_required_columns(
+        sections,
+        "sections",
+        ["SectionId", "SectionPhases"],
+    )
 
     print("\n========================")
     print("CAPACITOR COLUMNS")

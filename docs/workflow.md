@@ -6,7 +6,7 @@
 3. Export important tables to CSV when needed.
 4. Identify tables that represent feeder nodes, lines, switches, transformers, loads, sources, capacitors, regulators, and connectivity.
 5. Build validation checks one at a time.
-6. Save validation output in `reports/`.
+6. Save validation output in `data/exports/`.
 
 ## Input and Output Folders
 Recommended structure:
@@ -14,5 +14,4 @@ Recommended structure:
 ```text
 data/raw/      Original Synergi .mdb files
 data/exports/  CSV files exported from .mdb tables
-reports/       Verification summaries and findings
 ```

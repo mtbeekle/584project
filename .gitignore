@@ -6,6 +6,6 @@ __pycache__/
 data/raw/*.mdb
 data/raw/*.accdb
 data/exports/*.csv
-reports/*.csv
-reports/*.txt
-reports/*.xlsx
+data/exports/*.csv
+data/exports/*.txt
+data/exports/*.xlsx

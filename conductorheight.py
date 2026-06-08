@@ -1,12 +1,18 @@
 import pandas as pd
 
 from rules import get_rule
-from validation_utils import add_rule_columns
+from validation_utils import add_rule_columns, validate_required_columns
 
 
 def check_conductor_height(sections):
 
     results = {}
+
+    validate_required_columns(
+        sections,
+        "sections",
+        ["SectionId", "PhaseConductorId", "AveHeightAboveGround_MUL"],
+    )
 
     print("\n========================")
     print("CONDUCTOR HEIGHT CHECK")

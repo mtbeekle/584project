@@ -1,3 +1,3 @@
-Verification reports and model-check summaries go in this folder.
+Validation reports and CSV exports should be written to `data/exports/`.
 
 Generated report files are ignored by git.
