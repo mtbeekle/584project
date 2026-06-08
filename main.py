@@ -8,6 +8,7 @@ from missingdata import check_missing_data
 from capacitors import check_capacitors
 from fuses import check_open_fuses
 from conductorheight import check_conductor_height
+from loads import check_connected_kva
 from report_writer import write_validation_report
 
 
@@ -160,6 +161,11 @@ def main() -> None:
             sections
         )
 
+        load_results = check_connected_kva(
+            loads,
+            sections
+        )
+
         # =====================================================
         # PRINT RESULTS
         # =====================================================
@@ -213,12 +219,18 @@ def main() -> None:
             len(height_results['conductor_height_issues'])
         )
 
+        print(
+            "Sections with load records but no connected load:",
+            len(load_results['no_connected_kva'])
+        )
+
         write_validation_report(
             output_file,
             missing_results,
             capacitor_results,
             fuse_results,
             height_results,
+            load_results,
         )
 
         print(f"\nValidation report exported to:\n{output_file}")
