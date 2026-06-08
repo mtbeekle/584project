@@ -2,34 +2,9 @@ import argparse
 import csv
 from pathlib import Path
 
-import pandas as pd
 import pyodbc
 
-
-ACCESS_DRIVER = "Microsoft Access Driver (*.mdb, *.accdb)"
-
-
-def connect_to_mdb(mdb_path: Path) -> pyodbc.Connection:
-    if not mdb_path.exists():
-        raise FileNotFoundError(f"MDB file not found: {mdb_path}")
-
-    connection_string = (
-        f"DRIVER={{{ACCESS_DRIVER}}};"
-        f"DBQ={mdb_path.resolve()};"
-    )
-    return pyodbc.connect(connection_string)
-
-
-def list_user_tables(connection: pyodbc.Connection) -> list[str]:
-    cursor = connection.cursor()
-    tables = []
-
-    for row in cursor.tables(tableType="TABLE"):
-        table_name = row.table_name
-        if not table_name.startswith("MSys"):
-            tables.append(table_name)
-
-    return sorted(tables)
+from mdb_utils import connect_to_mdb, find_default_mdb_file, list_user_tables, read_table
 
 
 def list_columns(connection: pyodbc.Connection, table_name: str) -> list[tuple[str, str]]:
@@ -40,15 +15,6 @@ def list_columns(connection: pyodbc.Connection, table_name: str) -> list[tuple[s
         columns.append((row.column_name, row.type_name))
 
     return columns
-
-
-def quote_access_name(name: str) -> str:
-    return "[" + name.replace("]", "]]") + "]"
-
-
-def read_table(connection: pyodbc.Connection, table_name: str) -> pd.DataFrame:
-    quoted_table = quote_access_name(table_name)
-    return pd.read_sql(f"SELECT * FROM {quoted_table}", connection)
 
 
 def export_table(connection: pyodbc.Connection, table_name: str, output_dir: Path) -> Path:
@@ -86,7 +52,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Inspect and export tables from a Synergi Electric .mdb file."
     )
-    parser.add_argument("mdb_path", help="Path to the .mdb file to inspect.")
+    parser.add_argument(
+        "mdb_path",
+        nargs="?",
+        help="Path to the .mdb file to inspect. Default: the only .mdb/.accdb file in data/raw.",
+    )
     parser.add_argument(
         "--columns",
         action="store_true",
@@ -120,8 +90,8 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    mdb_path = Path(args.mdb_path)
-    output_dir = Path(args.out)
+    mdb_path = Path(args.mdb_path).expanduser() if args.mdb_path else find_default_mdb_file()
+    output_dir = Path(args.out).expanduser()
 
     with connect_to_mdb(mdb_path) as connection:
         tables = list_user_tables(connection)
