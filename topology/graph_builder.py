@@ -7,6 +7,16 @@ from validation_utils import validate_required_columns
 
 
 def build_section_graph(sections: pd.DataFrame) -> nx.Graph:
+    """
+    Build an undirected graph from section FromNodeId / ToNodeId connectivity.
+
+    Each edge represents one Synergi section.
+
+    Current limitation:
+    This first-pass version assumes all sections are active. Later, this will be
+    refined to exclude normally-open switches, open fuses, inactive sections,
+    or other de-energized equipment.
+    """
     validate_required_columns(
         sections,
         "sections",
@@ -15,7 +25,9 @@ def build_section_graph(sections: pd.DataFrame) -> nx.Graph:
 
     graph = nx.Graph()
 
-    valid_sections = sections.dropna(subset=["FromNodeId", "ToNodeId"])
+    valid_sections = sections.dropna(
+        subset=["SectionId", "FromNodeId", "ToNodeId"]
+    )
 
     for _, row in valid_sections.iterrows():
         graph.add_edge(
