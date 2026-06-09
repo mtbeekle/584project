@@ -1,6 +1,6 @@
-## Project Assumptions
+# Project Assumptions
 
-# This document records the main assumptions used during development of the Synergi MDB validation tool. These assumptions should be reviewed and updated as additional sponsor guidance, sample data, or Synergi model conventions become available.
+## This document records the main assumptions used during development of the Synergi MDB validation tool. These assumptions should be reviewed and updated as additional sponsor guidance, sample data, or Synergi model conventions become available.
 
 1. Project Boundary Assumptions
 
