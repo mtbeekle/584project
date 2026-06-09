@@ -7,7 +7,7 @@ from fuses import check_open_fuses
 from conductorheight import check_conductor_height
 from loads import check_connected_kva
 from mdb_utils import connect_to_mdb, find_default_mdb_file, list_user_tables, read_table
-from report_writer import write_validation_report
+from reports import write_validation_report
 from topology import check_loops
 
 
