@@ -1,12 +1,5 @@
 .venv/
 .idea/
+.data/
 __pycache__/
 *.py[cod]
-
-data/raw/*.mdb
-data/raw/*.accdb
-data/exports/*.csv
-data/exports/*.csv
-data/exports/*.txt
-data/exports/*.xlsx
-data/exports/*.graphml
