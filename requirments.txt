@@ -1,4 +1,0 @@
-pandas
-pyodbc
-openpyxl
-networkx
