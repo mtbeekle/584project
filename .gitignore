@@ -1,5 +1,6 @@
 .venv/
 .idea/
 .data/exports
+.data/raw
 __pycache__/
 *.py[cod]
