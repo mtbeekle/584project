@@ -112,17 +112,40 @@ def write_summary_sheet(
     worksheet = writer.book.create_sheet(title="Summary")
     writer.sheets["Summary"] = worksheet
 
-    current_row = 1
+    table_starts = {
+        "Validation Check Counts": 1,
+        "Severity Counts": 4,
+        "RuleID Counts": 7,
+        "Category Counts": 10,
+        "Report Metadata": 13,
+    }
+
     for title, dataframe in summary_tables:
-        worksheet.cell(row=current_row, column=1, value=title)
+        start_column = table_starts[title]
+        current_row = 1
+        worksheet.cell(row=current_row, column=start_column, value=title)
         current_row += 1
 
         for row in dataframe_to_rows(dataframe, index=False, header=True):
             for column_index, value in enumerate(row, start=1):
-                worksheet.cell(row=current_row, column=column_index, value=value)
+                worksheet.cell(
+                    row=current_row,
+                    column=start_column + column_index - 1,
+                    value=value,
+                )
             current_row += 1
 
-        current_row += 2
+        first_header = dataframe.columns[0] if len(dataframe.columns) > 0 else None
+        second_header = dataframe.columns[1] if len(dataframe.columns) > 1 else None
+
+        if first_header == "Label":
+            worksheet.column_dimensions["M"].width = 22
+            worksheet.column_dimensions["N"].width = 30
+        else:
+            column_letter_1 = worksheet.cell(row=2, column=start_column).column_letter
+            column_letter_2 = worksheet.cell(row=2, column=start_column + 1).column_letter
+            worksheet.column_dimensions[column_letter_1].width = 15
+            worksheet.column_dimensions[column_letter_2].width = 10
 
     format_summary_sheet(worksheet)
 
