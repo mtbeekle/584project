@@ -1,5 +1,6 @@
 import argparse
 from pathlib import Path
+import subprocess
 
 from missingdata import check_missing_data
 from capacitors import check_capacitors
@@ -7,7 +8,7 @@ from fuses import check_open_fuses
 from conductorheight import check_conductor_height
 from loads import check_connected_kva
 from mdb_utils import connect_to_mdb, find_default_mdb_file, list_user_tables, read_table
-from report_writer import write_validation_report
+from reports import write_validation_report
 from topology import check_loops
 
 
@@ -43,6 +44,22 @@ def load_table(connection, table_name: str):
         return read_table(connection, table_name)
     except Exception as exc:
         raise RuntimeError(f"Could not load required table [{table_name}]") from exc
+
+
+def get_tool_version() -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+            cwd=PROJECT_DIR,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return None
+
+    version = result.stdout.strip()
+    return version or None
 
 
 def main() -> None:
@@ -201,12 +218,14 @@ def main() -> None:
 
         write_validation_report(
             output_file,
+            mdb_file,
             missing_results,
             capacitor_results,
             fuse_results,
             height_results,
             load_results,
             topology_results,
+            tool_version=get_tool_version(),
         )
 
         print(f"\nValidation report exported to:\n{output_file}")

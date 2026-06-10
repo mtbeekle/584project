@@ -64,7 +64,7 @@ def check_loops(sections: pd.DataFrame) -> dict:
         ["SectionId", "FromNodeId", "ToNodeId"],
     )
 
-    graph = build_section_graph(sections
+    graph = build_section_graph(sections)
 
     loop_section_ids = find_loop_section_ids(graph)
 
