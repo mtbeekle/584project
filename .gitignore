@@ -1,6 +1,23 @@
+# Virtual environment
 .venv/
+venv/
+
+# IDE settings
 .idea/
-data/exports
-data/raw
+.vscode/
+
+# Python cache/build files
 __pycache__/
 *.py[cod]
+*$py.class
+
+# Data files and generated reports
+data/raw/
+data/exports/
+
+# Excel temporary files
+~$*.xlsx
+
+# OS files
+.DS_Store
+Thumbs.db
