@@ -18,6 +18,23 @@ STANDARD_ISSUE_COLUMNS = [
 ]
 
 
+def _build_count_rows(
+    section_name: str,
+    values: pd.Series,
+) -> list[dict[str, object]]:
+    counts = (
+        values.dropna()
+        .astype(str)
+        .value_counts()
+        .sort_values(ascending=False)
+    )
+
+    return [
+        {"Section": section_name, "Check": value, "Count": count}
+        for value, count in counts.items()
+    ]
+
+
 def build_issues_log(report_tables: dict[str, pd.DataFrame]) -> pd.DataFrame:
     issue_frames = []
 
@@ -43,6 +60,27 @@ def build_issues_log(report_tables: dict[str, pd.DataFrame]) -> pd.DataFrame:
     return issues[ordered_columns + remaining_columns]
 
 
+def build_summary_table(
+    report_tables: dict[str, pd.DataFrame],
+    issues: pd.DataFrame,
+) -> pd.DataFrame:
+    summary_rows = [
+        {"Section": "Validation Check", "Check": sheet_name, "Count": len(dataframe)}
+        for sheet_name, dataframe in report_tables.items()
+    ]
+
+    if "Severity" in issues.columns:
+        summary_rows.extend(_build_count_rows("Severity", issues["Severity"]))
+
+    if "RuleID" in issues.columns:
+        summary_rows.extend(_build_count_rows("RuleID", issues["RuleID"]))
+
+    if "Category" in issues.columns:
+        summary_rows.extend(_build_count_rows("Category", issues["Category"]))
+
+    return pd.DataFrame(summary_rows)
+
+
 def build_report_tables(
     missing_results: dict[str, pd.DataFrame],
     capacitor_results: dict[str, pd.DataFrame],
@@ -65,13 +103,8 @@ def build_report_tables(
         "NoConnectedKVA": load_results["no_connected_kva"],
     }
 
-    summary_rows = [
-        {"Check": sheet_name, "Count": len(dataframe)}
-        for sheet_name, dataframe in report_tables.items()
-    ]
-    summary = pd.DataFrame(summary_rows)
-
     issues = build_issues_log(report_tables)
+    summary = build_summary_table(report_tables, issues)
 
     return {
         "Summary": summary,

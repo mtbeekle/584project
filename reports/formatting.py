@@ -13,7 +13,9 @@ WRAP_ALIGNMENT = Alignment(vertical="top", wrap_text=True)
 TOP_ALIGNMENT = Alignment(vertical="top")
 
 COLUMN_WIDTHS = {
-    "RuleID": 10,
+    "Check": 15,
+    "SourceSheet": 15,
+    "RuleID": 8,
     "Category": 18,
     "Severity": 12,
     "ElementType": 15,
