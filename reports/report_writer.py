@@ -1,8 +1,10 @@
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
+from openpyxl.utils.dataframe import dataframe_to_rows
 
-from .formatting import format_report_sheet
+from .formatting import format_report_sheet, format_summary_sheet
 
 
 STANDARD_ISSUE_COLUMNS = [
@@ -18,10 +20,7 @@ STANDARD_ISSUE_COLUMNS = [
 ]
 
 
-def _build_count_rows(
-    section_name: str,
-    values: pd.Series,
-) -> list[dict[str, object]]:
+def _build_count_rows(values: pd.Series) -> list[dict[str, object]]:
     counts = (
         values.dropna()
         .astype(str)
@@ -30,7 +29,7 @@ def _build_count_rows(
     )
 
     return [
-        {"Section": section_name, "Check": value, "Count": count}
+        {"Check": value, "Count": count}
         for value, count in counts.items()
     ]
 
@@ -60,25 +59,72 @@ def build_issues_log(report_tables: dict[str, pd.DataFrame]) -> pd.DataFrame:
     return issues[ordered_columns + remaining_columns]
 
 
-def build_summary_table(
+def build_summary_tables(
     report_tables: dict[str, pd.DataFrame],
     issues: pd.DataFrame,
-) -> pd.DataFrame:
-    summary_rows = [
-        {"Section": "Validation Check", "Check": sheet_name, "Count": len(dataframe)}
-        for sheet_name, dataframe in report_tables.items()
+    mdb_file: Path,
+    tool_version: str | None,
+) -> list[tuple[str, pd.DataFrame]]:
+    metadata_table = pd.DataFrame(
+        [
+            {
+                "Label": "Report generated",
+                "Value": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            },
+            {"Label": "MDB file name", "Value": mdb_file.name},
+            {"Label": "Total issue count", "Value": len(issues)},
+            {"Label": "Tool version", "Value": tool_version or "Unavailable"},
+        ]
+    )
+
+    validation_counts = pd.DataFrame(
+        [
+            {"Check": sheet_name, "Count": len(dataframe)}
+            for sheet_name, dataframe in report_tables.items()
+        ]
+    )
+    severity_counts = pd.DataFrame(
+        _build_count_rows(issues["Severity"]) if "Severity" in issues.columns else [],
+        columns=["Check", "Count"],
+    )
+    rule_counts = pd.DataFrame(
+        _build_count_rows(issues["RuleID"]) if "RuleID" in issues.columns else [],
+        columns=["Check", "Count"],
+    )
+    category_counts = pd.DataFrame(
+        _build_count_rows(issues["Category"]) if "Category" in issues.columns else [],
+        columns=["Check", "Count"],
+    )
+
+    return [
+        ("Report Metadata", metadata_table),
+        ("Validation Check Counts", validation_counts),
+        ("Severity Counts", severity_counts),
+        ("RuleID Counts", rule_counts),
+        ("Category Counts", category_counts),
     ]
 
-    if "Severity" in issues.columns:
-        summary_rows.extend(_build_count_rows("Severity", issues["Severity"]))
 
-    if "RuleID" in issues.columns:
-        summary_rows.extend(_build_count_rows("RuleID", issues["RuleID"]))
+def write_summary_sheet(
+    writer: pd.ExcelWriter,
+    summary_tables: list[tuple[str, pd.DataFrame]],
+) -> None:
+    worksheet = writer.book.create_sheet(title="Summary")
+    writer.sheets["Summary"] = worksheet
 
-    if "Category" in issues.columns:
-        summary_rows.extend(_build_count_rows("Category", issues["Category"]))
+    current_row = 1
+    for title, dataframe in summary_tables:
+        worksheet.cell(row=current_row, column=1, value=title)
+        current_row += 1
 
-    return pd.DataFrame(summary_rows)
+        for row in dataframe_to_rows(dataframe, index=False, header=True):
+            for column_index, value in enumerate(row, start=1):
+                worksheet.cell(row=current_row, column=column_index, value=value)
+            current_row += 1
+
+        current_row += 2
+
+    format_summary_sheet(worksheet)
 
 
 def build_report_tables(
@@ -89,7 +135,7 @@ def build_report_tables(
     load_results: dict[str, pd.DataFrame],
     topology_results: dict[str, pd.DataFrame],
 ) -> dict[str, pd.DataFrame]:
-    report_tables = {
+    return {
         "MissingConnectivity": missing_results["missing_connectivity"],
         "MissingLength": missing_results["missing_length"],
         "MissingPhase": missing_results["missing_phase"],
@@ -103,24 +149,17 @@ def build_report_tables(
         "NoConnectedKVA": load_results["no_connected_kva"],
     }
 
-    issues = build_issues_log(report_tables)
-    summary = build_summary_table(report_tables, issues)
-
-    return {
-        "Summary": summary,
-        "Issues": issues,
-        **report_tables,
-    }
-
 
 def write_validation_report(
     output_file: Path,
+    mdb_file: Path,
     missing_results: dict[str, pd.DataFrame],
     capacitor_results: dict[str, pd.DataFrame],
     fuse_results: dict[str, pd.DataFrame],
     height_results: dict[str, pd.DataFrame],
     load_results: dict[str, pd.DataFrame],
     topology_results: dict[str, pd.DataFrame],
+    tool_version: str | None = None,
 ) -> None:
     output_file.parent.mkdir(parents=True, exist_ok=True)
     report_tables = build_report_tables(
@@ -131,8 +170,19 @@ def write_validation_report(
         load_results,
         topology_results,
     )
+    issues = build_issues_log(report_tables)
+    summary_tables = build_summary_tables(
+        report_tables,
+        issues,
+        mdb_file,
+        tool_version,
+    )
 
     with pd.ExcelWriter(output_file, engine="openpyxl") as writer:
+        write_summary_sheet(writer, summary_tables)
+        issues.to_excel(writer, sheet_name="Issues", index=False)
+        format_report_sheet(writer.sheets["Issues"])
+
         for sheet_name, dataframe in report_tables.items():
             dataframe.to_excel(writer, sheet_name=sheet_name, index=False)
             format_report_sheet(writer.sheets[sheet_name])

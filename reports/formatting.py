@@ -5,6 +5,7 @@ from openpyxl.worksheet.worksheet import Worksheet
 HEADER_FILL = PatternFill(fill_type="solid", fgColor="1F4E78")
 HEADER_FONT = Font(color="FFFFFF", bold=True)
 HEADER_ALIGNMENT = Alignment(horizontal="center", vertical="center")
+TITLE_FONT = Font(bold=True)
 ERROR_FILL = PatternFill(fill_type="solid", fgColor="FFC7CE")
 WARNING_FILL = PatternFill(fill_type="solid", fgColor="FFEB9C")
 REVIEW_FILL = PatternFill(fill_type="solid", fgColor="D9EAF7")
@@ -13,9 +14,12 @@ WRAP_ALIGNMENT = Alignment(vertical="top", wrap_text=True)
 TOP_ALIGNMENT = Alignment(vertical="top")
 
 COLUMN_WIDTHS = {
+    "Section": 18,
     "Check": 15,
+    "Label": 22,
+    "Value": 30,
     "SourceSheet": 15,
-    "RuleID": 8,
+    "RuleID": 10,
     "Category": 18,
     "Severity": 12,
     "ElementType": 15,
@@ -76,6 +80,25 @@ def _format_severity_cells(worksheet: Worksheet) -> None:
             cell.fill = REVIEW_FILL
         elif cell.value == "Info":
             cell.fill = INFO_FILL
+
+
+def format_summary_sheet(worksheet: Worksheet) -> None:
+    for row in worksheet.iter_rows():
+        values = [cell.value for cell in row if cell.value is not None]
+        if len(values) == 1:
+            row[0].font = TITLE_FONT
+            continue
+
+        if values[:2] == ["Label", "Value"] or values[:2] == ["Check", "Count"]:
+            for cell in row:
+                if cell.value is not None:
+                    cell.fill = HEADER_FILL
+                    cell.font = HEADER_FONT
+                    cell.alignment = HEADER_ALIGNMENT
+
+    _set_column_widths(worksheet)
+    _top_align_data_rows(worksheet)
+    _format_severity_cells(worksheet)
 
 
 def format_report_sheet(worksheet: Worksheet) -> None:
