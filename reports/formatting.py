@@ -14,8 +14,8 @@ WRAP_ALIGNMENT = Alignment(vertical="top", wrap_text=True)
 TOP_ALIGNMENT = Alignment(vertical="top")
 
 COLUMN_WIDTHS = {
-    "Section": 18,
-    "Check": 15,
+    "Validation Check Counts": 22,
+    "Category Counts": 20,
     "Label": 22,
     "Value": 30,
     "SourceSheet": 15,
@@ -24,7 +24,7 @@ COLUMN_WIDTHS = {
     "Severity": 12,
     "ElementType": 15,
     "ElementID": 18,
-    "Issue": 35,
+    "Issue": 25,
     "Description": 55,
     "RecommendedAction": 55,
 }
