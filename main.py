@@ -2,11 +2,11 @@ import argparse
 from pathlib import Path
 import subprocess
 
-from missingdata import check_missing_data
-from capacitors import check_capacitors
-from fuses import check_open_fuses
-from conductorheight import check_conductor_height
-from loads import check_connected_kva
+from checks.missingdata import check_missing_data
+from checks.capacitors import check_capacitors
+from checks.fuses import check_open_fuses
+from checks.conductorheight import check_conductor_height
+from checks.loads import check_connected_kva
 from mdb_utils import connect_to_mdb, find_default_mdb_file, list_user_tables, read_table
 from reports import write_validation_report
 #from topology import check_loops

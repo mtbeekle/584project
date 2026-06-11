@@ -9,6 +9,8 @@ Python-based validation tool for detecting GIS-to-MDB conversion inconsistencies
 3. Run `python installverification.py` to verify the environment.
 4. Place the MDB file in `data/raw/`.
 
+Validation check modules are organized under `checks/`.
+
 ## Required dependencies
 1. pandas
 2. pyodbc
