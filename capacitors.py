@@ -259,18 +259,19 @@ def check_capacitors(capacitors, sections):
 
     capacitor_rating_issue_rows = []
 
-    for _, row in capacitors.iterrows():
-        rated_kv_numeric = _num(row[rated_kv_column]) if rated_kv_column else np.nan
-        if not pd.isna(rated_kv_numeric) and rated_kv_numeric > 0:
-            continue
+    if rated_kv_column:
+        for _, row in capacitors.iterrows():
+            rated_kv_numeric = _num(row[rated_kv_column])
+            if not pd.isna(rated_kv_numeric) and rated_kv_numeric > 0:
+                continue
 
-        temp = row.copy()
-        temp["RatedKvColumnUsed"] = rated_kv_column
-        temp["RatedKvRaw"] = row[rated_kv_column] if rated_kv_column else np.nan
-        temp["RatedKvNumeric"] = rated_kv_numeric
-        for key, value in _build_capacitor_totals(row).items():
-            temp[key] = value
-        capacitor_rating_issue_rows.append(temp)
+            temp = row.copy()
+            temp["RatedKvColumnUsed"] = rated_kv_column
+            temp["RatedKvRaw"] = row[rated_kv_column]
+            temp["RatedKvNumeric"] = rated_kv_numeric
+            for key, value in _build_capacitor_totals(row).items():
+                temp[key] = value
+            capacitor_rating_issue_rows.append(temp)
 
     capacitor_rating_issues = add_rule_columns(
         pd.DataFrame(capacitor_rating_issue_rows),
