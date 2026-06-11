@@ -221,24 +221,20 @@ def check_capacitors(capacitors, sections):
     )
 
     # ==================================================
-    # VR5: ZERO OR MISSING RATEDKV
+    # VR5: ZERO OR MISSING KVAR RATING
     # ==================================================
 
     capacitor_rating_issue_rows = []
 
-    if rated_kv_column:
-        for _, row in capacitors.iterrows():
-            rated_kv_numeric = _num(row[rated_kv_column])
-            if not pd.isna(rated_kv_numeric) and rated_kv_numeric > 0:
-                continue
+    for _, row in capacitors.iterrows():
+        totals = _build_capacitor_totals(row)
+        if totals["TotalFixedKvar"] > 0 or totals["TotalModuleKvarPerPhase"] > 0:
+            continue
 
-            temp = row.copy()
-            temp["RatedKvColumnUsed"] = rated_kv_column
-            temp["RatedKvRaw"] = row[rated_kv_column]
-            temp["RatedKvNumeric"] = rated_kv_numeric
-            for key, value in _build_capacitor_totals(row).items():
-                temp[key] = value
-            capacitor_rating_issue_rows.append(temp)
+        temp = row.copy()
+        for key, value in totals.items():
+            temp[key] = value
+        capacitor_rating_issue_rows.append(temp)
 
     capacitor_rating_issues = add_rule_columns(
         pd.DataFrame(capacitor_rating_issue_rows),
@@ -300,7 +296,7 @@ def check_capacitors(capacitors, sections):
     print("\n========================")
     print("CAPACITOR SUMMARY")
     print("========================")
-    print("VR5 zero or missing rating:", len(capacitor_rating_issues))
+    print("VR5 zero or missing kVAR rating:", len(capacitor_rating_issues))
     print("VR6 voltage mismatch:", len(capacitor_voltage_issues))
     print("VR7 phase mismatch:", len(phase_mismatches))
     print(f"Total capacitor issues found: {len(capacitor_issues)}")
