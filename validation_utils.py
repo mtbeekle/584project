@@ -30,6 +30,15 @@ FALSE_VALUES = {
 }
 
 
+def clean_column_names(dataframe: pd.DataFrame | None) -> pd.DataFrame:
+    if dataframe is None:
+        return pd.DataFrame()
+
+    cleaned = dataframe.copy()
+    cleaned.columns = [str(column).strip() for column in cleaned.columns]
+    return cleaned
+
+
 def validate_required_columns(
     dataframe: pd.DataFrame,
     dataframe_name: str,
@@ -72,6 +81,35 @@ def is_true_series(series: pd.Series) -> pd.Series:
 
 def is_false_series(series: pd.Series) -> pd.Series:
     return series.map(normalize_boolean_value).eq(False)
+
+
+def parse_phase_set(value) -> set[str]:
+    if value is None:
+        return set()
+
+    try:
+        if pd.isna(value):
+            return set()
+    except Exception:
+        pass
+
+    normalized = str(value).upper()
+    replacements = [
+        ("PHASES", ""),
+        ("PHASE", ""),
+        (" ", ""),
+        (",", ""),
+        (";", ""),
+        ("-", ""),
+        ("_", ""),
+        ("1", "A"),
+        ("2", "B"),
+        ("3", "C"),
+    ]
+    for original, replacement in replacements:
+        normalized = normalized.replace(original, replacement)
+
+    return {char for char in normalized if char in {"A", "B", "C"}}
 
 
 def add_issue_columns(

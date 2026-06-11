@@ -2,19 +2,15 @@ import numpy as np
 import pandas as pd
 
 from rules import get_rule
-from validation_utils import add_rule_columns, validate_required_columns
+from validation_utils import (
+    add_rule_columns,
+    clean_column_names,
+    parse_phase_set,
+    validate_required_columns,
+)
 
 
 VR6_VOLTAGE_TOLERANCE_PCT = 10.0
-
-
-def _clean_cols(df: pd.DataFrame | None) -> pd.DataFrame:
-    if df is None:
-        return pd.DataFrame()
-
-    cleaned = df.copy()
-    cleaned.columns = [str(column).strip() for column in cleaned.columns]
-    return cleaned
 
 
 def _key(value: object) -> str:
@@ -60,35 +56,6 @@ def _voltage_kv(value: object) -> float:
         return np.nan
 
     return numeric_value / 1000.0 if abs(numeric_value) > 1000 else numeric_value
-
-
-def _phase_set(value: object) -> set[str]:
-    if value is None:
-        return set()
-
-    try:
-        if pd.isna(value):
-            return set()
-    except Exception:
-        pass
-
-    normalized = str(value).upper()
-    replacements = [
-        ("PHASES", ""),
-        ("PHASE", ""),
-        (" ", ""),
-        (",", ""),
-        (";", ""),
-        ("-", ""),
-        ("_", ""),
-        ("1", "A"),
-        ("2", "B"),
-        ("3", "C"),
-    ]
-    for original, replacement in replacements:
-        normalized = normalized.replace(original, replacement)
-
-    return {char for char in normalized if char in {"A", "B", "C"}}
 
 
 def _is_active(value: object) -> bool:
@@ -165,8 +132,8 @@ def _build_capacitor_totals(row: pd.Series) -> dict[str, float]:
 
 
 def check_capacitors(capacitors, sections):
-    capacitors = _clean_cols(capacitors)
-    sections = _clean_cols(sections)
+    capacitors = clean_column_names(capacitors)
+    sections = clean_column_names(sections)
 
     results = {}
 
@@ -235,8 +202,8 @@ def check_capacitors(capacitors, sections):
     phase_mismatch_rows = []
 
     for _, row in capacitor_phase_check.iterrows():
-        cap_phases = _phase_set(row["ConnectedPhases"])
-        line_phases = _phase_set(row["SectionPhases"])
+        cap_phases = parse_phase_set(row["ConnectedPhases"])
+        line_phases = parse_phase_set(row["SectionPhases"])
 
         if cap_phases and line_phases and not cap_phases.issubset(line_phases):
             temp = row.copy()
