@@ -11,6 +11,27 @@ from validation_utils import (
 
 
 VR6_VOLTAGE_TOLERANCE_PCT = 10.0
+CAPACITOR_RATED_KV_COLUMNS = [
+    "RatedKv",
+    "RatedKV",
+    "Rated kV",
+    "Rated_kV",
+    "RatedKvLL",
+    "RatedKVLL",
+]
+SECTION_VOLTAGE_COLUMNS = [
+    "SectionNominalKv",
+    "NominalKv",
+    "NominalKV",
+    "NominalVoltage",
+    "BaseKv",
+    "BaseKV",
+    "BaseVoltage",
+    "OperatingKv",
+    "Voltage",
+    "Kv",
+    "KV",
+]
 
 
 def _key(value: object) -> str:
@@ -56,6 +77,18 @@ def _voltage_kv(value: object) -> float:
         return np.nan
 
     return numeric_value / 1000.0 if abs(numeric_value) > 1000 else numeric_value
+
+
+def _section_context_column(
+    source_column: str,
+    capacitors: pd.DataFrame,
+    context: pd.DataFrame,
+) -> str:
+    suffixed_column = f"{source_column}_Section"
+    if source_column in capacitors.columns and suffixed_column in context.columns:
+        return suffixed_column
+
+    return source_column
 
 
 def _is_active(value: object) -> bool:
@@ -122,10 +155,17 @@ def _module_kvar_per_phase(row: pd.Series) -> float:
 def _build_capacitor_totals(row: pd.Series) -> dict[str, float]:
     fixed_kvar = _fixed_kvar(row)
     module_kvar_per_phase = _module_kvar_per_phase(row)
-    switched_kvar = module_kvar_per_phase * 3
+    connected_phases = (
+        parse_phase_set(row["ConnectedPhases"])
+        if "ConnectedPhases" in row.index
+        else set()
+    )
+    switched_phase_count = len(connected_phases) if connected_phases else 3
+    switched_kvar = module_kvar_per_phase * switched_phase_count
     return {
         "TotalFixedKvar": fixed_kvar,
         "TotalModuleKvarPerPhase": module_kvar_per_phase,
+        "TotalSwitchedPhaseCount": switched_phase_count,
         "TotalSwitchedKvar": switched_kvar,
         "TotalKvar": fixed_kvar + switched_kvar,
     }
@@ -160,10 +200,7 @@ def check_capacitors(capacitors, sections):
     print("========================")
     print(capacitors.columns.tolist())
 
-    rated_kv_column = _find_col(
-        capacitors,
-        ["RatedKv", "RatedKV", "Rated kV", "Rated_kV", "RatedKvLL", "RatedKVLL"],
-    )
+    rated_kv_column = _find_col(capacitors, CAPACITOR_RATED_KV_COLUMNS)
     print("RatedKv column used:", rated_kv_column)
 
     capacitor_phase_check = capacitors.merge(
@@ -173,25 +210,16 @@ def check_capacitors(capacitors, sections):
         suffixes=("", "_Section"),
     )
 
-    section_voltage_column = None
-    section_voltage_candidates = [
-        "SectionNominalKv",
-        "NominalKv_Section",
-        "NominalKV_Section",
-        "NominalVoltage_Section",
-        "BaseKv_Section",
-        "BaseKV_Section",
-        "BaseVoltage_Section",
-        "OperatingKv_Section",
-        "Voltage_Section",
-        "Kv_Section",
-        "KV_Section",
-    ]
-    for candidate in section_voltage_candidates:
-        matched = _find_col(capacitor_phase_check, [candidate])
-        if matched:
-            section_voltage_column = matched
-            break
+    section_voltage_source_column = _find_col(sections, SECTION_VOLTAGE_COLUMNS)
+    section_voltage_column = (
+        _section_context_column(
+            section_voltage_source_column,
+            capacitors,
+            capacitor_phase_check,
+        )
+        if section_voltage_source_column
+        else None
+    )
 
     print("Section voltage column used:", section_voltage_column)
 
