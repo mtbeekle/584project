@@ -244,6 +244,43 @@ def check_capacitors(capacitors, sections):
     )
 
     # ==================================================
+    # VR6 subissue: MISSING OR ZERO RATEDKV
+    # ==================================================
+
+    capacitor_missing_rated_kv_rows = []
+
+    if rated_kv_column:
+        for _, row in capacitors.iterrows():
+            rated_kv_numeric = _num(row[rated_kv_column])
+            if not pd.isna(rated_kv_numeric) and rated_kv_numeric > 0:
+                continue
+
+            temp = row.copy()
+            temp["RatedKvColumnUsed"] = rated_kv_column
+            temp["RatedKvRaw"] = row[rated_kv_column]
+            temp["RatedKvNumeric"] = rated_kv_numeric
+            for key, value in _build_capacitor_totals(row).items():
+                temp[key] = value
+            capacitor_missing_rated_kv_rows.append(temp)
+
+    capacitor_missing_rated_kv_issues = add_rule_columns(
+        pd.DataFrame(capacitor_missing_rated_kv_rows),
+        rule=get_rule("VR6"),
+        element_type="Capacitor",
+        element_id="UniqueDeviceId",
+    )
+
+    if not capacitor_missing_rated_kv_issues.empty:
+        capacitor_missing_rated_kv_issues["Severity"] = "Review"
+        capacitor_missing_rated_kv_issues["Issue"] = "Capacitor RatedKv is missing or zero"
+        capacitor_missing_rated_kv_issues["Description"] = (
+            "Capacitor RatedKv is blank, missing, or zero in the source data."
+        )
+        capacitor_missing_rated_kv_issues["RecommendedAction"] = (
+            "Check the RatedKv column for this capacitor and populate a valid kV value if needed."
+        )
+
+    # ==================================================
     # VR6: VOLTAGE MISMATCH
     # ==================================================
 
@@ -285,6 +322,7 @@ def check_capacitors(capacitors, sections):
     capacitor_issues = pd.concat(
         [
             capacitor_rating_issues,
+            capacitor_missing_rated_kv_issues,
             capacitor_voltage_issues,
             phase_mismatches,
         ],
@@ -297,6 +335,7 @@ def check_capacitors(capacitors, sections):
     print("CAPACITOR SUMMARY")
     print("========================")
     print("VR5 zero or missing kVAR rating:", len(capacitor_rating_issues))
+    print("VR6 missing or zero RatedKv:", len(capacitor_missing_rated_kv_issues))
     print("VR6 voltage mismatch:", len(capacitor_voltage_issues))
     print("VR7 phase mismatch:", len(phase_mismatches))
     print(f"Total capacitor issues found: {len(capacitor_issues)}")
