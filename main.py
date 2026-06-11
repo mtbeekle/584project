@@ -9,7 +9,7 @@ from conductorheight import check_conductor_height
 from loads import check_connected_kva
 from mdb_utils import connect_to_mdb, find_default_mdb_file, list_user_tables, read_table
 from reports import write_validation_report
-from topology import check_loops
+#from topology import check_loops
 
 
 PROJECT_DIR = Path(__file__).resolve().parent
@@ -151,7 +151,7 @@ def main() -> None:
             sections
         )
 
-        topology_results = check_loops(sections)
+        #topology_results = check_loops(sections)
 
         # =====================================================
         # PRINT RESULTS
@@ -206,10 +206,10 @@ def main() -> None:
             len(height_results['conductor_height_issues'])
         )
 
-        print(
-            "Potential loop sections:",
-            len(topology_results['loop_sections'])
-        )
+        # print(
+        #     "Potential loop sections:",
+        #     len(topology_results['loop_sections'])
+        # )
 
         print(
             "Sections with load records but no connected load:",
@@ -224,7 +224,7 @@ def main() -> None:
             fuse_results,
             height_results,
             load_results,
-            topology_results,
+            #topology_results,
             tool_version=get_tool_version(),
         )
 
