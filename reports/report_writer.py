@@ -1,5 +1,6 @@
 from datetime import datetime
 from pathlib import Path
+import platform
 
 import pandas as pd
 from openpyxl.utils.dataframe import dataframe_to_rows
@@ -74,6 +75,7 @@ def build_summary_tables(
             {"Label": "MDB file name", "Value": mdb_file.name},
             {"Label": "Total issue count", "Value": len(issues)},
             {"Label": "Tool version", "Value": tool_version or "Unavailable"},
+            {"Label": "Python version", "Value": platform.python_version()},
         ]
     )
 
