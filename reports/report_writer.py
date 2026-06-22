@@ -158,6 +158,9 @@ def build_report_tables(
     fuse_results: dict[str, pd.DataFrame],
     height_results: dict[str, pd.DataFrame],
     load_results: dict[str, pd.DataFrame],
+    customer_count_results: dict[str, pd.DataFrame],
+    conductor_mismatch_results: dict[str, pd.DataFrame],
+    incorrect_phase_results: dict[str, pd.DataFrame],
     #topology_results: dict[str, pd.DataFrame],
 ) -> dict[str, pd.DataFrame]:
     return {
@@ -172,6 +175,9 @@ def build_report_tables(
         #"LoopSections": topology_results["loop_sections"],
         "ConductorHeight": height_results["conductor_height_issues"],
         "NoConnectedKVA": load_results["no_connected_kva"],
+        "CustomerCount": customer_count_results["customer_count_issues"],
+        "ConductorMismatch": conductor_mismatch_results["conductor_issues"],
+        "IncorrectPhases": incorrect_phase_results["incorrect_phases"],
     }
 
 
@@ -183,6 +189,9 @@ def write_validation_report(
     fuse_results: dict[str, pd.DataFrame],
     height_results: dict[str, pd.DataFrame],
     load_results: dict[str, pd.DataFrame],
+    customer_count_results: dict[str, pd.DataFrame],
+    conductor_mismatch_results: dict[str, pd.DataFrame],
+    incorrect_phase_results: dict[str, pd.DataFrame],
     #topology_results: dict[str, pd.DataFrame],
     tool_version: str | None = None,
 ) -> None:
@@ -193,6 +202,9 @@ def write_validation_report(
         fuse_results,
         height_results,
         load_results,
+        customer_count_results,
+        conductor_mismatch_results,
+        incorrect_phase_results,
         #topology_results,
     )
     issues = build_issues_log(report_tables)

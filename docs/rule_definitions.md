@@ -227,9 +227,9 @@ For example, an overhead conductor may be expected to have a positive height abo
 
 **Implementation Notes:**
 
-This rule identifies sections with inconsistent conductor definitions. The implementation should compare conductor-related fields associated with the same section and flag unexpected differences.
+This rule identifies three-phase sections with missing or unknown conductor assignments. The implementation checks `UseEquivSpacing` to decide whether the section should use the single equivalent-spacing conductor field or all per-phase conductor fields.
 
-Acceptable exceptions should be documented if the sponsor identifies valid cases.
+Equivalent-spacing sections require `PhaseConductorId`. Non-equivalent-spacing sections require `PhaseConductorId`, `PhaseConductor2Id`, and `PhaseConductor3Id`. Acceptable exceptions should be documented if the sponsor identifies valid cases.
 
 ## VR13 - Fewer Upstream Phases
 
@@ -245,9 +245,9 @@ Acceptable exceptions should be documented if the sponsor identifies valid cases
 
 **Implementation Notes:**
 
-This rule checks whether a downstream section or device has more phases than the upstream conductor feeding it. A complete implementation requires ordered connectivity or graph traversal so upstream and downstream relationships can be determined.
+This rule checks whether a downstream section has phases that are not present on the upstream section feeding it. The current implementation identifies direct upstream/downstream relationships with `ToNodeId` and `FromNodeId`, then compares normalized phase sets.
 
-Phase values should be normalized before comparison.
+Phase values are normalized before comparison. A future graph traversal may be needed if device records interrupt section-to-section connectivity.
 
 ## VR14 - Customer Count Missing
 
@@ -263,7 +263,9 @@ Phase values should be normalized before comparison.
 
 **Implementation Notes:**
 
-This rule identifies missing or blank customer count values where customer count is expected. Some records may intentionally have no customer count, so sponsor guidance may be needed to determine when the field is required.
+This rule identifies load records with positive per-phase kW and no per-phase customers. The implementation sums `Phase1Kw`, `Phase2Kw`, and `Phase3Kw`, then flags records where `Phase1Customers`, `Phase2Customers`, and `Phase3Customers` sum to zero or blank.
+
+Some records may intentionally have no customer count, so sponsor guidance may be needed to determine when the field is required.
 
 ## Maintenance Notes
 

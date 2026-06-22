@@ -91,6 +91,7 @@ def check_connected_kva(loads: pd.DataFrame, sections: pd.DataFrame) -> dict:
     load_values = loads.copy()
     load_total_columns = []
     section_total_columns = []
+    issue_basis_columns = []
 
     for unit, columns in phase_power_column_groups.items():
         for column in columns:
@@ -108,6 +109,8 @@ def check_connected_kva(loads: pd.DataFrame, sections: pd.DataFrame) -> dict:
             load_values.groupby("SectionId")[total_column].transform("sum")
         )
         section_total_columns.append(section_total_column)
+        if unit == "KVA":
+            issue_basis_columns.append(section_total_column)
 
     if total_kva_columns:
         for column in total_kva_columns:
@@ -124,6 +127,10 @@ def check_connected_kva(loads: pd.DataFrame, sections: pd.DataFrame) -> dict:
             load_values.groupby("SectionId")["TotalConnectedKVA"].transform("sum")
         )
         section_total_columns.append(section_total_column)
+        issue_basis_columns.append(section_total_column)
+
+    if not issue_basis_columns:
+        issue_basis_columns = section_total_columns
 
     section_load_summary = (
         load_values
@@ -139,7 +146,7 @@ def check_connected_kva(loads: pd.DataFrame, sections: pd.DataFrame) -> dict:
 
     no_connected_kva = add_rule_columns(
         section_load_summary[
-            (section_load_summary[section_total_columns] <= 0).all(axis=1)
+            (section_load_summary[issue_basis_columns] <= 0).all(axis=1)
         ],
         rule=get_rule("VR10"),
         element_type="Section",
@@ -153,6 +160,7 @@ def check_connected_kva(loads: pd.DataFrame, sections: pd.DataFrame) -> dict:
     print("========================")
     print(f"Phase power column groups used: {phase_power_column_groups}")
     print(f"Total kVA columns used: {total_kva_columns}")
+    print(f"Issue basis columns used: {issue_basis_columns}")
     print(f"Sections with load records but no connected load: {len(no_connected_kva)}")
 
     return results

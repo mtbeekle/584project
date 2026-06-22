@@ -35,3 +35,5 @@ To verify the Python and ODBC environment, run:
 ```powershell
 .\.venv\Scripts\python.exe installverification.py
 ```
+
+Validation checks such as `capacitors.py` and `conductorheight.py` are located in `checks/`.
