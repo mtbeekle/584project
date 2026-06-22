@@ -7,7 +7,7 @@ This folder contains project documentation for the Synergi MDB validation tool. 
 - [Setup](./setup.md) - Platform requirements, Python dependencies, ODBC driver requirements, and environment verification steps.
 - [Inspect MDB](./inspect-mdb.md) - Commands for inspecting MDB tables, listing columns, previewing records, and exporting tables to CSV.
 - [Workflow](./workflow.md) - Recommended workflow for placing MDB files, inspecting schemas, building checks, and saving validation outputs.
-- [Validation Notes](./validation-notes.md) - Early validation ideas and schema notes for Synergi MDB data.
+- [Validation Notes](./validation-notes.md) - Validation ideas, implemented check notes, and schema notes for Synergi MDB data.
 - [Project Assumptions](./assumptions.md) - Project boundary, data access, reporting, topology, device, circuit data, testing, and documentation assumptions.
 - [Rule Definitions](./rule_definitions.md) - Validation rule metadata and implementation notes matching the `RULES` registry in `rules.py`.
 

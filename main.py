@@ -6,7 +6,10 @@ from checks.missingdata import check_missing_data
 from checks.capacitors import check_capacitors
 from checks.fuses import check_open_fuses
 from checks.conductorheight import check_conductor_height
+from checks.customercount import check_customer_count
 from checks.loads import check_connected_kva
+from checks.incorrectphases import check_incorrect_phases
+from checks.mismatched_conductors import check_conductor_mismatch
 from mdb_utils import connect_to_mdb, find_default_mdb_file, list_user_tables, read_table
 from reports import write_validation_report
 #from topology import check_loops
@@ -151,6 +154,18 @@ def main() -> None:
             sections
         )
 
+        customer_count_results = check_customer_count(
+            loads
+        )
+
+        conductor_mismatch_results = check_conductor_mismatch(
+            sections
+        )
+
+        incorrect_phase_results = check_incorrect_phases(
+            sections
+        )
+
         #topology_results = check_loops(sections)
 
         # =====================================================
@@ -216,6 +231,21 @@ def main() -> None:
             len(load_results['no_connected_kva'])
         )
 
+        print(
+            "Customer count issues:",
+            len(customer_count_results['customer_count_issues'])
+        )
+
+        print(
+            "Conductor configuration issues:",
+            len(conductor_mismatch_results['conductor_issues'])
+        )
+
+        print(
+            "Incorrect phase issues:",
+            len(incorrect_phase_results['incorrect_phases'])
+        )
+
         write_validation_report(
             output_file,
             mdb_file,
@@ -224,6 +254,9 @@ def main() -> None:
             fuse_results,
             height_results,
             load_results,
+            customer_count_results,
+            conductor_mismatch_results,
+            incorrect_phase_results,
             #topology_results,
             tool_version=get_tool_version(),
         )
