@@ -4,12 +4,40 @@ import pandas as pd
 import networkx as nx
 
 from rules import get_rule
-from validation_utils import add_rule_columns, validate_required_columns
+from validation_utils import (
+    add_rule_columns,
+    normalize_boolean_value,
+    validate_required_columns,
+)
 from topology.graph_builder import build_section_graph
+
+
+ISOLATED_COMPONENT_ISSUE = "Isolated topology component"
+ISOLATED_COMPONENT_DESCRIPTION = (
+    "Section is outside the largest connected topology component. This may "
+    "indicate an unfed section, separate feeder/source area, DER island, or "
+    "disconnected model island."
+)
+ISOLATED_COMPONENT_RECOMMENDED_ACTION = (
+    "Review feeder/source assignment, switching status, DER/source devices, "
+    "and whether this component is intentionally separate."
+)
 
 
 def _format_sample(values: pd.Series) -> str:
     return ", ".join(values.dropna().astype(str).head(10).tolist())
+
+
+def _false_mask(values: pd.Series) -> pd.Series:
+    return values.map(normalize_boolean_value).eq(False)
+
+
+def _apply_isolated_component_metadata(sections: pd.DataFrame) -> pd.DataFrame:
+    sections["Severity"] = "Review"
+    sections["Issue"] = ISOLATED_COMPONENT_ISSUE
+    sections["Description"] = ISOLATED_COMPONENT_DESCRIPTION
+    sections["RecommendedAction"] = ISOLATED_COMPONENT_RECOMMENDED_ACTION
+    return sections
 
 
 def build_component_summary(sections: pd.DataFrame) -> pd.DataFrame:
@@ -25,6 +53,7 @@ def build_component_summary(sections: pd.DataFrame) -> pd.DataFrame:
     rows = []
     components = list(nx.connected_components(graph))
     largest_component = max(components, key=len) if components else set()
+    total_sections = len(sections)
 
     for component in components:
         section_mask = (
@@ -32,12 +61,18 @@ def build_component_summary(sections: pd.DataFrame) -> pd.DataFrame:
             & sections["ToNodeId"].isin(component)
         )
         component_sections = sections[section_mask]
+        section_count = len(component_sections)
 
         rows.append(
             {
                 "NodeCount": len(component),
-                "SectionCount": len(component_sections),
+                "SectionCount": section_count,
                 "IsLargestComponent": component == largest_component,
+                "PercentOfTotalSections": (
+                    round(section_count / total_sections * 100, 2)
+                    if total_sections
+                    else 0
+                ),
                 "SampleNodeIds": ", ".join(
                     str(node)
                     for node in sorted(component, key=lambda value: str(value))[:10]
@@ -55,6 +90,7 @@ def build_component_summary(sections: pd.DataFrame) -> pd.DataFrame:
                 "NodeCount",
                 "SectionCount",
                 "IsLargestComponent",
+                "PercentOfTotalSections",
                 "SampleNodeIds",
                 "SampleSectionIds",
             ]
@@ -69,29 +105,71 @@ def build_component_summary(sections: pd.DataFrame) -> pd.DataFrame:
     return summary.reset_index(drop=True)
 
 
+def _find_sections_outside_largest_component(sections: pd.DataFrame) -> pd.Series:
+    graph = build_section_graph(sections)
+
+    if graph.number_of_nodes() == 0:
+        return pd.Series(True, index=sections.index)
+
+    components = list(nx.connected_components(graph))
+
+    if not components:
+        return pd.Series(True, index=sections.index)
+
+    main_component = max(components, key=len)
+
+    return (
+        sections["FromNodeId"].notna()
+        & sections["ToNodeId"].notna()
+        & ~sections["FromNodeId"].isin(main_component)
+        & ~sections["ToNodeId"].isin(main_component)
+    )
+
+
+def _find_isolated_component_sections(sections: pd.DataFrame) -> pd.Series:
+    if "IsFed" in sections.columns:
+        # Synergi's IsFed field already reflects the model's known source and
+        # switching state. Prefer it over source-free graph inference when it is
+        # available so valid feeder/source areas are not flagged as unfed.
+        return _false_mask(sections["IsFed"])
+
+    if "FeederId" not in sections.columns:
+        return _find_sections_outside_largest_component(sections)
+
+    isolated_mask = pd.Series(False, index=sections.index)
+
+    # Fallback for MDBs without IsFed: compare components inside each feeder,
+    # not across the whole MDB. A distribution model can contain multiple valid
+    # feeder/source areas, so a single global largest component is not a valid
+    # source proxy.
+    for _, feeder_sections in sections.groupby("FeederId", dropna=False):
+        isolated_mask.loc[feeder_sections.index] = (
+            _find_sections_outside_largest_component(feeder_sections)
+        )
+
+    return isolated_mask
+
+
 def check_unfed_sections(sections: pd.DataFrame) -> dict:
     """
-    VR1 - Unfed / disconnected sections
+    VR1 - Isolated topology component review
 
-    First-pass source-free implementation.
+    Topology diagnostic.
 
-    Since the MDB does not provide explicit source_node_ids, this check uses
-    connected components as an a priori topology validation method.
+    When InstSection.IsFed is available, this check uses that MDB field because
+    it reflects the model's known source and switching state. If IsFed is not
+    available, it falls back to a source-free connected-component diagnostic
+    grouped by FeederId when possible.
 
-    The largest connected component is treated as the main feeder/model
-    component. Sections outside that component are flagged as disconnected
-    topology sections.
+    The largest connected component is used only as a fallback reference
+    component for review. Sections outside that fallback component are reported
+    as isolated topology components, not confirmed unfed sections.
 
     Limitation:
-    This does not prove electrical energization from a true source. It flags
-    sections disconnected from the main topology component.
-
-    Diagnostic note:
-    DisconnectedTopology is currently a source-free, component-based
-    approximation. High disconnected counts may indicate multiple
-    feeders/circuits in one MDB, not necessarily real unfed sections. A future
-    improvement should group topology checks by feeder/circuit if the correct
-    grouping column is identified.
+    This does not prove electrical energization. It does not yet account for
+    multiple valid sources, rooftop solar, DER, normally-open switches, or
+    feeder grouping. Future improvement should identify actual
+    source/feeder/DER devices and active switching status from MDB tables.
     """
     validate_required_columns(
         sections,
@@ -100,42 +178,7 @@ def check_unfed_sections(sections: pd.DataFrame) -> dict:
     )
 
     topology_components = build_component_summary(sections)
-    graph = build_section_graph(sections)
-
-    if graph.number_of_nodes() == 0:
-        unfed_sections = add_rule_columns(
-            sections.copy(),
-            rule=get_rule("VR1"),
-            element_type="Section",
-            element_id="SectionId",
-        )
-        return {
-            "unfed_sections": unfed_sections,
-            "topology_components": topology_components,
-        }
-
-    components = list(nx.connected_components(graph))
-
-    if not components:
-        unfed_sections = add_rule_columns(
-            sections.copy(),
-            rule=get_rule("VR1"),
-            element_type="Section",
-            element_id="SectionId",
-        )
-        return {
-            "unfed_sections": unfed_sections,
-            "topology_components": topology_components,
-        }
-
-    main_component = max(components, key=len)
-
-    unfed_mask = (
-        sections["FromNodeId"].notna()
-        & sections["ToNodeId"].notna()
-        & ~sections["FromNodeId"].isin(main_component)
-        & ~sections["ToNodeId"].isin(main_component)
-    )
+    unfed_mask = _find_isolated_component_sections(sections)
 
     unfed_sections = add_rule_columns(
         sections[unfed_mask].copy(),
@@ -143,17 +186,7 @@ def check_unfed_sections(sections: pd.DataFrame) -> dict:
         element_type="Section",
         element_id="SectionId",
     )
-
-    if not unfed_sections.empty:
-        unfed_sections["Issue"] = "Disconnected topology section"
-        unfed_sections["Description"] = (
-            "Section is outside the largest connected topology component. "
-            "This indicates a possible unfed or disconnected island."
-        )
-        unfed_sections["RecommendedAction"] = (
-            "Review section connectivity, upstream path, open devices, and whether "
-            "this disconnected island is intentional."
-        )
+    unfed_sections = _apply_isolated_component_metadata(unfed_sections)
 
     return {
         "unfed_sections": unfed_sections,

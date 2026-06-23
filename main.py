@@ -252,12 +252,12 @@ def main() -> None:
         )
 
         print(
-            "Potential loop sections:",
+            "Potential loop/meshed topology review sections:",
             len(loop_results["loop_sections"])
         )
 
         print(
-            "Disconnected topology sections:",
+            "Isolated topology component review sections:",
             len(unfed_topology_results["unfed_sections"])
         )
 

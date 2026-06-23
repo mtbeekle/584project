@@ -35,10 +35,10 @@ def _build_count_rows(values: pd.Series) -> list[dict[str, object]]:
     ]
 
 
-def build_issues_log(report_tables: dict[str, pd.DataFrame]) -> pd.DataFrame:
+def build_issues_log(issue_tables: dict[str, pd.DataFrame]) -> pd.DataFrame:
     issue_frames = []
 
-    for sheet_name, dataframe in report_tables.items():
+    for sheet_name, dataframe in issue_tables.items():
         if dataframe.empty:
             continue
 
@@ -61,7 +61,7 @@ def build_issues_log(report_tables: dict[str, pd.DataFrame]) -> pd.DataFrame:
 
 
 def build_summary_tables(
-    report_tables: dict[str, pd.DataFrame],
+    issue_tables: dict[str, pd.DataFrame],
     issues: pd.DataFrame,
     mdb_file: Path,
     tool_version: str | None,
@@ -82,7 +82,7 @@ def build_summary_tables(
     validation_counts = pd.DataFrame(
         [
             {"Check": sheet_name, "Count": len(dataframe)}
-            for sheet_name, dataframe in report_tables.items()
+            for sheet_name, dataframe in issue_tables.items()
         ]
     )
     severity_counts = pd.DataFrame(
@@ -152,7 +152,7 @@ def write_summary_sheet(
     format_summary_sheet(worksheet)
 
 
-def build_report_tables(
+def build_issue_tables(
     missing_results: dict[str, pd.DataFrame],
     capacitor_results: dict[str, pd.DataFrame],
     fuse_results: dict[str, pd.DataFrame],
@@ -179,6 +179,30 @@ def build_report_tables(
         "ConductorMismatch": conductor_mismatch_results["conductor_issues"],
         "IncorrectPhases": incorrect_phase_results["incorrect_phases"],
     }
+
+
+def build_report_tables(
+    missing_results: dict[str, pd.DataFrame],
+    capacitor_results: dict[str, pd.DataFrame],
+    fuse_results: dict[str, pd.DataFrame],
+    height_results: dict[str, pd.DataFrame],
+    load_results: dict[str, pd.DataFrame],
+    customer_count_results: dict[str, pd.DataFrame],
+    conductor_mismatch_results: dict[str, pd.DataFrame],
+    incorrect_phase_results: dict[str, pd.DataFrame],
+    topology_results: dict[str, pd.DataFrame],
+) -> dict[str, pd.DataFrame]:
+    return build_issue_tables(
+        missing_results,
+        capacitor_results,
+        fuse_results,
+        height_results,
+        load_results,
+        customer_count_results,
+        conductor_mismatch_results,
+        incorrect_phase_results,
+        topology_results,
+    )
 
 
 def build_diagnostic_tables(
@@ -216,7 +240,7 @@ def write_validation_report(
     tool_version: str | None = None,
 ) -> None:
     output_file.parent.mkdir(parents=True, exist_ok=True)
-    report_tables = build_report_tables(
+    issue_tables = build_issue_tables(
         missing_results,
         capacitor_results,
         fuse_results,
@@ -228,9 +252,9 @@ def write_validation_report(
         topology_results,
     )
     diagnostic_tables = build_diagnostic_tables(capacitor_results, topology_results)
-    issues = build_issues_log(report_tables)
+    issues = build_issues_log(issue_tables)
     summary_tables = build_summary_tables(
-        report_tables,
+        issue_tables,
         issues,
         mdb_file,
         tool_version,
@@ -241,7 +265,7 @@ def write_validation_report(
         issues.to_excel(writer, sheet_name="Issues", index=False)
         format_report_sheet(writer.sheets["Issues"])
 
-        for sheet_name, dataframe in report_tables.items():
+        for sheet_name, dataframe in issue_tables.items():
             dataframe.to_excel(writer, sheet_name=sheet_name, index=False)
             format_report_sheet(writer.sheets[sheet_name])
 
