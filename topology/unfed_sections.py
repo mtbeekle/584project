@@ -8,6 +8,67 @@ from validation_utils import add_rule_columns, validate_required_columns
 from topology.graph_builder import build_section_graph
 
 
+def _format_sample(values: pd.Series) -> str:
+    return ", ".join(values.dropna().astype(str).head(10).tolist())
+
+
+def build_component_summary(sections: pd.DataFrame) -> pd.DataFrame:
+    """
+    Build diagnostic metadata describing section connectivity components.
+
+    This is not a validation issue table. It helps explain disconnected
+    topology counts by showing how many separate components exist in the
+    section graph and which sections/nodes are represented in each component.
+    """
+    graph = build_section_graph(sections)
+
+    rows = []
+    components = list(nx.connected_components(graph))
+    largest_component = max(components, key=len) if components else set()
+
+    for component in components:
+        section_mask = (
+            sections["FromNodeId"].isin(component)
+            & sections["ToNodeId"].isin(component)
+        )
+        component_sections = sections[section_mask]
+
+        rows.append(
+            {
+                "NodeCount": len(component),
+                "SectionCount": len(component_sections),
+                "IsLargestComponent": component == largest_component,
+                "SampleNodeIds": ", ".join(
+                    str(node)
+                    for node in sorted(component, key=lambda value: str(value))[:10]
+                ),
+                "SampleSectionIds": _format_sample(
+                    component_sections["SectionId"]
+                ),
+            }
+        )
+
+    if not rows:
+        return pd.DataFrame(
+            columns=[
+                "ComponentID",
+                "NodeCount",
+                "SectionCount",
+                "IsLargestComponent",
+                "SampleNodeIds",
+                "SampleSectionIds",
+            ]
+        )
+
+    summary = pd.DataFrame(rows).sort_values(
+        by="SectionCount",
+        ascending=False,
+    )
+    summary.insert(0, "ComponentID", range(1, len(summary) + 1))
+
+    return summary.reset_index(drop=True)
+
+
 def check_unfed_sections(sections: pd.DataFrame) -> dict:
     """
     VR1 - Unfed / disconnected sections
@@ -24,6 +85,13 @@ def check_unfed_sections(sections: pd.DataFrame) -> dict:
     Limitation:
     This does not prove electrical energization from a true source. It flags
     sections disconnected from the main topology component.
+
+    Diagnostic note:
+    DisconnectedTopology is currently a source-free, component-based
+    approximation. High disconnected counts may indicate multiple
+    feeders/circuits in one MDB, not necessarily real unfed sections. A future
+    improvement should group topology checks by feeder/circuit if the correct
+    grouping column is identified.
     """
     validate_required_columns(
         sections,
@@ -31,6 +99,7 @@ def check_unfed_sections(sections: pd.DataFrame) -> dict:
         ["SectionId", "FromNodeId", "ToNodeId"],
     )
 
+    topology_components = build_component_summary(sections)
     graph = build_section_graph(sections)
 
     if graph.number_of_nodes() == 0:
@@ -40,7 +109,10 @@ def check_unfed_sections(sections: pd.DataFrame) -> dict:
             element_type="Section",
             element_id="SectionId",
         )
-        return {"unfed_sections": unfed_sections}
+        return {
+            "unfed_sections": unfed_sections,
+            "topology_components": topology_components,
+        }
 
     components = list(nx.connected_components(graph))
 
@@ -51,7 +123,10 @@ def check_unfed_sections(sections: pd.DataFrame) -> dict:
             element_type="Section",
             element_id="SectionId",
         )
-        return {"unfed_sections": unfed_sections}
+        return {
+            "unfed_sections": unfed_sections,
+            "topology_components": topology_components,
+        }
 
     main_component = max(components, key=len)
 
@@ -80,4 +155,7 @@ def check_unfed_sections(sections: pd.DataFrame) -> dict:
             "this disconnected island is intentional."
         )
 
-    return {"unfed_sections": unfed_sections}
+    return {
+        "unfed_sections": unfed_sections,
+        "topology_components": topology_components,
+    }

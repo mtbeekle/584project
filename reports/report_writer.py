@@ -183,6 +183,7 @@ def build_report_tables(
 
 def build_diagnostic_tables(
     capacitor_results: dict[str, pd.DataFrame],
+    topology_results: dict[str, pd.DataFrame],
 ) -> dict[str, pd.DataFrame]:
     return {
         "CapVoltageContext": capacitor_results.get(
@@ -191,6 +192,10 @@ def build_diagnostic_tables(
         ),
         "TransformerLocations": capacitor_results.get(
             "transformer_locations",
+            pd.DataFrame(),
+        ),
+        "TopologyComponents": topology_results.get(
+            "topology_components",
             pd.DataFrame(),
         ),
     }
@@ -222,7 +227,7 @@ def write_validation_report(
         incorrect_phase_results,
         topology_results,
     )
-    diagnostic_tables = build_diagnostic_tables(capacitor_results)
+    diagnostic_tables = build_diagnostic_tables(capacitor_results, topology_results)
     issues = build_issues_log(report_tables)
     summary_tables = build_summary_tables(
         report_tables,
