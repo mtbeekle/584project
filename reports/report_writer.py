@@ -181,6 +181,21 @@ def build_report_tables(
     }
 
 
+def build_diagnostic_tables(
+    capacitor_results: dict[str, pd.DataFrame],
+) -> dict[str, pd.DataFrame]:
+    return {
+        "CapVoltageContext": capacitor_results.get(
+            "capacitor_voltage_context",
+            pd.DataFrame(),
+        ),
+        "TransformerLocations": capacitor_results.get(
+            "transformer_locations",
+            pd.DataFrame(),
+        ),
+    }
+
+
 def write_validation_report(
     output_file: Path,
     mdb_file: Path,
@@ -207,6 +222,7 @@ def write_validation_report(
         incorrect_phase_results,
         #topology_results,
     )
+    diagnostic_tables = build_diagnostic_tables(capacitor_results)
     issues = build_issues_log(report_tables)
     summary_tables = build_summary_tables(
         report_tables,
@@ -221,5 +237,9 @@ def write_validation_report(
         format_report_sheet(writer.sheets["Issues"])
 
         for sheet_name, dataframe in report_tables.items():
+            dataframe.to_excel(writer, sheet_name=sheet_name, index=False)
+            format_report_sheet(writer.sheets[sheet_name])
+
+        for sheet_name, dataframe in diagnostic_tables.items():
             dataframe.to_excel(writer, sheet_name=sheet_name, index=False)
             format_report_sheet(writer.sheets[sheet_name])

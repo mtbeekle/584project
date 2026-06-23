@@ -1,3 +1,5 @@
+import re
+
 import numpy as np
 import pandas as pd
 
@@ -10,7 +12,10 @@ from validation_utils import (
 )
 
 
+# A voltage-class mismatch such as 4.16 kV connected to 12.47 kV is a major issue.
+# Keep this tolerance configurable after sponsor review.
 VR6_VOLTAGE_TOLERANCE_PCT = 10.0
+
 CAPACITOR_RATED_KV_COLUMNS = [
     "RatedKv",
     "RatedKV",
@@ -18,12 +23,19 @@ CAPACITOR_RATED_KV_COLUMNS = [
     "Rated_kV",
     "RatedKvLL",
     "RatedKVLL",
+    "Rated kVLL",
+    "NominalKvll",
+    "NominalKVLL",
 ]
+
 SECTION_VOLTAGE_COLUMNS = [
     "SectionNominalKv",
     "NominalKv",
     "NominalKV",
     "NominalVoltage",
+    "NominalKvll",
+    "NominalKVLL",
+    "Nominal kVLL",
     "BaseKv",
     "BaseKV",
     "BaseVoltage",
@@ -33,18 +45,145 @@ SECTION_VOLTAGE_COLUMNS = [
     "KV",
 ]
 
+SECTION_ID_COLUMNS = [
+    "SectionId",
+    "SectionID",
+    "Section",
+    "SectionName",
+]
+
+FROM_NODE_COLUMNS = [
+    "FromNodeId",
+    "FromNodeID",
+    "FromNode",
+    "FromBus",
+    "FromBusId",
+    "FromBusID",
+    "SourceNodeId",
+    "SourceNode",
+    "Node1",
+    "NodeId1",
+    "NodeID1",
+    "StartNode",
+]
+
+TO_NODE_COLUMNS = [
+    "ToNodeId",
+    "ToNodeID",
+    "ToNode",
+    "ToBus",
+    "ToBusId",
+    "ToBusID",
+    "DestinationNodeId",
+    "DestinationNode",
+    "Node2",
+    "NodeId2",
+    "NodeID2",
+    "EndNode",
+]
+
+TRANSFORMER_ID_COLUMNS = [
+    "UniqueDeviceId",
+    "DeviceId",
+    "DeviceID",
+    "TransformerId",
+    "TransformerID",
+    "DTranId",
+    "DTranID",
+    "SubTranId",
+    "SubTranID",
+    "Name",
+    "Id",
+    "ID",
+]
+
+TRANSFORMER_SECTION_ID_COLUMNS = [
+    "SectionId",
+    "SectionID",
+    "ConnectedSectionId",
+    "ConnectedSectionID",
+    "ParentSectionId",
+    "ParentSectionID",
+]
+
+TRANSFORMER_PRIMARY_KV_COLUMNS = [
+    "PrimaryKv",
+    "PrimaryKV",
+    "PrimaryVoltage",
+    "RatedPrimaryKv",
+    "RatedPrimaryKV",
+    "HighSideKv",
+    "HighSideKV",
+    "HighVoltage",
+    "HighKv",
+    "HighKV",
+    "NominalPrimaryKv",
+    "NominalPrimaryKV",
+]
+
+TRANSFORMER_SECONDARY_KV_COLUMNS = [
+    "SecondaryKv",
+    "SecondaryKV",
+    "SecondaryVoltage",
+    "RatedSecondaryKv",
+    "RatedSecondaryKV",
+    "LowSideKv",
+    "LowSideKV",
+    "LowVoltage",
+    "LowKv",
+    "LowKV",
+    "NominalSecondaryKv",
+    "NominalSecondaryKV",
+]
+
+TRANSFORMER_TYPE_COLUMNS = [
+    "TransformerType",
+    "Transformer Type",
+    "Type",
+    "Description",
+    "DeviceType",
+    "EquipmentType",
+    "Name",
+]
+
+TRANSFORMER_VOLTAGE_TEXT_COLUMNS = [
+    "TransformerType",
+    "Transformer Type",
+    "Type",
+    "Description",
+    "DeviceType",
+    "EquipmentType",
+    "Name",
+    "UniqueDeviceId",
+]
+
 
 def _key(value: object) -> str:
     return str(value).strip().lower().replace(" ", "").replace("_", "")
 
 
-def _find_col(dataframe: pd.DataFrame, names: list[str]) -> str | None:
+def _find_col(dataframe: pd.DataFrame | None, names: list[str]) -> str | None:
+    if dataframe is None or dataframe.empty:
+        return None
+
     lookup = {_key(column): column for column in dataframe.columns}
     for name in names:
         matched = lookup.get(_key(name))
         if matched:
             return matched
     return None
+
+
+def _find_cols(dataframe: pd.DataFrame | None, names: list[str]) -> list[str]:
+    if dataframe is None or dataframe.empty:
+        return []
+
+    lookup = {_key(column): column for column in dataframe.columns}
+    return [
+        lookup[_key(name)]
+        for name in names
+        if _key(name) in lookup
+    ]
 
 
 def _num(value: object) -> float:
@@ -76,7 +215,34 @@ def _voltage_kv(value: object) -> float:
     if pd.isna(numeric_value):
         return np.nan
 
+    # Synergi fields may be in volts or kV. Treat values over 1000 as volts.
     return numeric_value / 1000.0 if abs(numeric_value) > 1000 else numeric_value
+
+
+def _clean_id(value: object) -> str | None:
+    if value is None:
+        return None
+
+    try:
+        if pd.isna(value):
+            return None
+    except Exception:
+        pass
+
+    text = str(value).strip()
+    return text if text else None
+
+
+def _first_clean_value(row: pd.Series, columns: list[str]) -> tuple[str | None, str | None]:
+    for column in columns:
+        if column not in row.index:
+            continue
+
+        value = _clean_id(row[column])
+        if value:
+            return value, column
+
+    return None, None
 
 
 def _section_context_column(
@@ -171,9 +337,451 @@ def _build_capacitor_totals(row: pd.Series) -> dict[str, float]:
     }
 
 
-def check_capacitors(capacitors, sections):
+def _valid_kv(value: object) -> bool:
+    try:
+        numeric_value = float(value)
+    except (TypeError, ValueError):
+        return False
+
+    return not pd.isna(numeric_value) and numeric_value > 0
+
+
+def _pick_transformer_expected_kv(
+    primary_kv: float,
+    secondary_kv: float,
+    capacitor_side: str | None = None,
+) -> float:
+    side = (capacitor_side or "").lower()
+
+    if "high" in side and _valid_kv(primary_kv):
+        return primary_kv
+
+    if "low" in side and _valid_kv(secondary_kv):
+        return secondary_kv
+
+    return np.nan
+
+
+def _parse_transformer_voltage_pair(value: object) -> tuple[float, float, str | None]:
+    """
+    Parse voltage pairs embedded in text such as:
+    - PM 115/34.5 30MVA
+    - PM 69/12.47 10MVA
+    - 1P 19.9/7.2 500
+    - DT 7.6kV / 240V
+
+    Returns high-side kV, low-side kV, and the raw matched text.
+    """
+    if value is None:
+        return np.nan, np.nan, None
+
+    try:
+        if pd.isna(value):
+            return np.nan, np.nan, None
+    except Exception:
+        pass
+
+    text = str(value)
+    pattern = re.compile(
+        r"(?P<left>\d+(?:\.\d+)?)\s*(?P<left_unit>kv|v)?\s*/\s*"
+        r"(?P<right>\d+(?:\.\d+)?)\s*(?P<right_unit>kv|v)?",
+        re.IGNORECASE,
+    )
+    match = pattern.search(text)
+    if not match:
+        return np.nan, np.nan, None
+
+    left = float(match.group("left"))
+    right = float(match.group("right"))
+    left_unit = (match.group("left_unit") or "kv").lower()
+    right_unit = (match.group("right_unit") or "kv").lower()
+
+    if left_unit == "v":
+        left /= 1000.0
+    if right_unit == "v":
+        right /= 1000.0
+
+    # If no unit was present and the secondary side looks like 240 or 480,
+    # treat it as volts instead of kV.
+    if right_unit == "kv" and right >= 100:
+        right /= 1000.0
+
+    high_side = max(left, right)
+    low_side = min(left, right)
+    return high_side, low_side, match.group(0)
+
+
+def _extract_transformer_voltage_from_text(
+    row: pd.Series,
+    text_columns: list[str],
+) -> tuple[float, float, str | None, str | None]:
+    for column in text_columns:
+        if column not in row.index:
+            continue
+        high_kv, low_kv, raw_match = _parse_transformer_voltage_pair(row[column])
+        if _valid_kv(high_kv) and _valid_kv(low_kv):
+            return high_kv, low_kv, column, raw_match
+    return np.nan, np.nan, None, None
+
+
+def _classify_transformer_type(value: object, source_table: object = None) -> str:
+    text = f"{source_table or ''} {value or ''}".upper()
+
+    if "DTRANS" in text or "DT " in text or text.strip().startswith("DT"):
+        return "Distribution transformer"
+
+    if "SUBSTATION" in text or "MVA" in text or "PM " in text or text.strip().startswith("PM"):
+        return "Substation / power transformer"
+
+    if "PRIMARY" in text or "XFMR" in text or "TRANSFORMER" in text:
+        return "Primary transformer"
+
+    if "TRANLINE" in text or "TRANVERT" in text:
+        return "Transmission transformer-related table"
+
+    return "Unknown transformer type"
+
+
+def build_transformer_locations(
+    transformers: pd.DataFrame | None,
+    sections: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    Standardize transformer records so VR6 can understand where transformers are.
+
+    This function is intentionally tolerant of schema differences. It tries to find:
+    - transformer ID
+    - transformer section ID
+    - transformer from/to nodes
+    - primary and secondary kV
+    """
+    if transformers is None or transformers.empty:
+        return pd.DataFrame()
+
+    transformers = clean_column_names(transformers)
+    sections = clean_column_names(sections)
+
+    transformer_id_cols = _find_cols(transformers, TRANSFORMER_ID_COLUMNS)
+    transformer_section_col = _find_col(transformers, TRANSFORMER_SECTION_ID_COLUMNS)
+    transformer_from_col = _find_col(transformers, FROM_NODE_COLUMNS)
+    transformer_to_col = _find_col(transformers, TO_NODE_COLUMNS)
+    primary_kv_col = _find_col(transformers, TRANSFORMER_PRIMARY_KV_COLUMNS)
+    secondary_kv_col = _find_col(transformers, TRANSFORMER_SECONDARY_KV_COLUMNS)
+    transformer_type_col = _find_col(transformers, TRANSFORMER_TYPE_COLUMNS)
+    voltage_text_cols = [
+        column
+        for column in TRANSFORMER_VOLTAGE_TEXT_COLUMNS
+        if column in transformers.columns
+    ]
+
+    section_id_col = _find_col(sections, SECTION_ID_COLUMNS) or "SectionId"
+    section_from_col = _find_col(sections, FROM_NODE_COLUMNS)
+    section_to_col = _find_col(sections, TO_NODE_COLUMNS)
+
+    section_node_lookup: dict[str, tuple[str | None, str | None]] = {}
+    if section_id_col in sections.columns:
+        for _, section_row in sections.iterrows():
+            sid = _clean_id(section_row[section_id_col])
+            if not sid:
+                continue
+            from_node = _clean_id(section_row[section_from_col]) if section_from_col else None
+            to_node = _clean_id(section_row[section_to_col]) if section_to_col else None
+            section_node_lookup[sid] = (from_node, to_node)
+
+    rows = []
+    for idx, row in transformers.iterrows():
+        transformer_id, transformer_id_col = _first_clean_value(row, transformer_id_cols)
+        if not transformer_id:
+            transformer_id = f"Transformer_Row_{idx}"
+
+        section_id = _clean_id(row[transformer_section_col]) if transformer_section_col else None
+
+        from_node = _clean_id(row[transformer_from_col]) if transformer_from_col else None
+        to_node = _clean_id(row[transformer_to_col]) if transformer_to_col else None
+
+        # If the transformer table only references a section, borrow that section's nodes.
+        if section_id and (not from_node or not to_node):
+            section_from_node, section_to_node = section_node_lookup.get(section_id, (None, None))
+            from_node = from_node or section_from_node
+            to_node = to_node or section_to_node
+
+        primary_kv = _voltage_kv(row[primary_kv_col]) if primary_kv_col else np.nan
+        secondary_kv = _voltage_kv(row[secondary_kv_col]) if secondary_kv_col else np.nan
+
+        parsed_high_kv, parsed_low_kv, parsed_from_col, parsed_raw = (
+            _extract_transformer_voltage_from_text(row, voltage_text_cols)
+        )
+
+        # Prefer explicit voltage columns when present; otherwise use parsed text.
+        if not _valid_kv(primary_kv) and _valid_kv(parsed_high_kv):
+            primary_kv = parsed_high_kv
+        if not _valid_kv(secondary_kv) and _valid_kv(parsed_low_kv):
+            secondary_kv = parsed_low_kv
+
+        transformer_type_raw = row[transformer_type_col] if transformer_type_col else None
+        source_table = row["TransformerSourceTable"] if "TransformerSourceTable" in row.index else None
+
+        rows.append(
+            {
+                "TransformerId": transformer_id,
+                "TransformerSourceTable": source_table,
+                "TransformerSectionId": section_id,
+                "TransformerFromNode": from_node,
+                "TransformerToNode": to_node,
+                "TransformerPrimaryKv": primary_kv,
+                "TransformerSecondaryKv": secondary_kv,
+                "TransformerVoltageRatioRaw": parsed_raw,
+                "TransformerVoltageParsedFromColumn": parsed_from_col,
+                "TransformerTypeRaw": transformer_type_raw,
+                "TransformerClass": _classify_transformer_type(transformer_type_raw, source_table),
+                "TransformerIdColumnUsed": transformer_id_col,
+                "TransformerSectionColumnUsed": transformer_section_col,
+                "TransformerFromNodeColumnUsed": transformer_from_col,
+                "TransformerToNodeColumnUsed": transformer_to_col,
+                "TransformerPrimaryKvColumnUsed": primary_kv_col,
+                "TransformerSecondaryKvColumnUsed": secondary_kv_col,
+                "TransformerTypeColumnUsed": transformer_type_col,
+            }
+        )
+
+    return pd.DataFrame(rows)
+
+
+def _build_section_node_context(sections: pd.DataFrame) -> dict[str, dict[str, object]]:
+    section_id_col = _find_col(sections, SECTION_ID_COLUMNS) or "SectionId"
+    section_from_col = _find_col(sections, FROM_NODE_COLUMNS)
+    section_to_col = _find_col(sections, TO_NODE_COLUMNS)
+    section_voltage_col = _find_col(sections, SECTION_VOLTAGE_COLUMNS)
+
+    context = {}
+    if section_id_col not in sections.columns:
+        return context
+
+    for _, row in sections.iterrows():
+        section_id = _clean_id(row[section_id_col])
+        if not section_id:
+            continue
+
+        context[section_id] = {
+            "from_node": _clean_id(row[section_from_col]) if section_from_col else None,
+            "to_node": _clean_id(row[section_to_col]) if section_to_col else None,
+            "section_voltage_kv": _voltage_kv(row[section_voltage_col]) if section_voltage_col else np.nan,
+            "section_voltage_column": section_voltage_col,
+        }
+
+    return context
+
+
+def _match_to_result(
+    match: pd.Series,
+    match_type: str,
+    side: str,
+    use_for_voltage: bool = True,
+) -> dict[str, object]:
+    expected_kv = _pick_transformer_expected_kv(
+        match["TransformerPrimaryKv"],
+        match["TransformerSecondaryKv"],
+        side,
+    )
+
+    return {
+        "TransformerAwareVoltageUsed": use_for_voltage and _valid_kv(expected_kv),
+        "TransformerMatchType": match_type,
+        "MatchedTransformerId": match["TransformerId"],
+        "MatchedTransformerSectionId": match["TransformerSectionId"],
+        "MatchedTransformerPrimaryKv": match["TransformerPrimaryKv"],
+        "MatchedTransformerSecondaryKv": match["TransformerSecondaryKv"],
+        "MatchedTransformerExpectedKv": expected_kv,
+        "CapacitorSideOfTransformer": side,
+        "TransformerSourceTable": match.get("TransformerSourceTable"),
+        "TransformerClass": match.get("TransformerClass"),
+        "TransformerVoltageRatioRaw": match.get("TransformerVoltageRatioRaw"),
+    }
+
+
+def _find_transformer_for_capacitor_section(
+    capacitor_section_id: object,
+    transformer_locations: pd.DataFrame,
+    section_context: dict[str, dict[str, object]],
+) -> dict[str, object]:
+    """
+    Return the most relevant transformer for a capacitor section.
+
+    Priority:
+    1. Transformer directly assigned to the same SectionId. Side is unknown.
+    2. Transformer immediately downstream of capacitor section. Capacitor is high-side/upstream.
+    3. Transformer immediately upstream of capacitor section. Capacitor is low-side/downstream.
+    4. Nearest upstream transformer by following section from-node -> upstream section to-node.
+
+    This assumes section FromNode -> ToNode generally follows source -> load.
+    If the MDB uses different direction conventions, the diagnostic columns expose
+    the chosen transformer and side classification for engineering review.
+    """
+    result = {
+        "TransformerAwareVoltageUsed": False,
+        "TransformerMatchType": None,
+        "MatchedTransformerId": None,
+        "MatchedTransformerSectionId": None,
+        "MatchedTransformerPrimaryKv": np.nan,
+        "MatchedTransformerSecondaryKv": np.nan,
+        "MatchedTransformerExpectedKv": np.nan,
+        "CapacitorSideOfTransformer": None,
+        "TransformerSourceTable": None,
+        "TransformerClass": None,
+        "TransformerVoltageRatioRaw": None,
+    }
+
+    if transformer_locations is None or transformer_locations.empty:
+        return result
+
+    cap_section_id = _clean_id(capacitor_section_id)
+    if not cap_section_id:
+        return result
+
+    valid_transformers = transformer_locations.dropna(
+        subset=["TransformerPrimaryKv", "TransformerSecondaryKv"],
+        how="all",
+    )
+    if valid_transformers.empty:
+        return result
+
+    # Direct section matches prove association, but not physical side.
+    direct_matches = valid_transformers[
+        valid_transformers["TransformerSectionId"].astype(str).str.strip() == cap_section_id
+    ]
+    if not direct_matches.empty:
+        match = direct_matches.iloc[0]
+        result.update(
+            _match_to_result(
+                match,
+                "Transformer on same SectionId",
+                "Same SectionId as transformer - side unknown",
+                use_for_voltage=False,
+            )
+        )
+        return result
+
+    cap_context = section_context.get(cap_section_id, {})
+    cap_from_node = cap_context.get("from_node")
+    cap_to_node = cap_context.get("to_node")
+
+    # Transformer immediately downstream: capacitor sits on transformer high side.
+    if cap_to_node:
+        downstream_matches = valid_transformers[
+            valid_transformers["TransformerFromNode"].astype(str).str.strip()
+            == str(cap_to_node).strip()
+        ]
+        if not downstream_matches.empty:
+            match = downstream_matches.iloc[0]
+            result.update(
+                _match_to_result(
+                    match,
+                    "Transformer immediately downstream of capacitor section",
+                    "High side / upstream of transformer",
+                )
+            )
+            return result
+
+    # Transformer immediately upstream: capacitor sits on transformer low side.
+    if cap_from_node:
+        upstream_matches = valid_transformers[
+            valid_transformers["TransformerToNode"].astype(str).str.strip()
+            == str(cap_from_node).strip()
+        ]
+        if not upstream_matches.empty:
+            match = upstream_matches.iloc[0]
+            result.update(
+                _match_to_result(
+                    match,
+                    "Transformer immediately upstream of capacitor section",
+                    "Low side / downstream of transformer",
+                )
+            )
+            return result
+
+    # Nearest upstream transformer by walking from capacitor from-node upstream.
+    if not cap_from_node:
+        return result
+
+    sections_by_to_node: dict[str, list[str]] = {}
+    for sid, context in section_context.items():
+        to_node = context.get("to_node")
+        if to_node:
+            sections_by_to_node.setdefault(str(to_node).strip(), []).append(sid)
+
+    current_nodes = [str(cap_from_node).strip()]
+    visited_nodes = set()
+    max_depth = max(len(section_context), 1)
+
+    for _ in range(max_depth):
+        if not current_nodes:
+            break
+
+        next_nodes = []
+        for node in current_nodes:
+            if node in visited_nodes:
+                continue
+            visited_nodes.add(node)
+
+            upstream_transformers = valid_transformers[
+                valid_transformers["TransformerToNode"].astype(str).str.strip() == node
+            ]
+            if not upstream_transformers.empty:
+                match = upstream_transformers.iloc[0]
+                result.update(
+                    _match_to_result(
+                        match,
+                        "Nearest upstream transformer by node trace",
+                        "Low side / downstream of transformer",
+                    )
+                )
+                return result
+
+            for upstream_section_id in sections_by_to_node.get(node, []):
+                upstream_context = section_context.get(upstream_section_id, {})
+                upstream_from_node = upstream_context.get("from_node")
+                if upstream_from_node:
+                    next_nodes.append(str(upstream_from_node).strip())
+
+        current_nodes = next_nodes
+
+    return result
+
+
+def _expected_voltage_for_vr6(
+    row: pd.Series,
+    section_voltage_column: str | None,
+    transformer_locations: pd.DataFrame,
+    section_context: dict[str, dict[str, object]],
+) -> dict[str, object]:
+    transformer_match = _find_transformer_for_capacitor_section(
+        row["SectionId"] if "SectionId" in row.index else None,
+        transformer_locations,
+        section_context,
+    )
+
+    section_kv = _voltage_kv(row[section_voltage_column]) if section_voltage_column else np.nan
+
+    if transformer_match["TransformerAwareVoltageUsed"]:
+        expected_kv = transformer_match["MatchedTransformerExpectedKv"]
+        side = transformer_match.get("CapacitorSideOfTransformer") or "side not classified"
+        voltage_source = f"Transformer-aware voltage ({side})"
+    else:
+        expected_kv = section_kv
+        voltage_source = "Connected section voltage"
+
+    return {
+        "ExpectedVoltageKvForCheck": expected_kv,
+        "SectionVoltageKvForCheck": section_kv,
+        "ExpectedVoltageSource": voltage_source,
+        **transformer_match,
+    }
+
+
+def check_capacitors(capacitors, sections, transformers=None, nodes=None):
     capacitors = clean_column_names(capacitors)
     sections = clean_column_names(sections)
+    transformers = clean_column_names(transformers) if transformers is not None else None
 
     results = {}
 
@@ -202,6 +810,30 @@ def check_capacitors(capacitors, sections):
 
     rated_kv_column = _find_col(capacitors, CAPACITOR_RATED_KV_COLUMNS)
     print("RatedKv column used:", rated_kv_column)
+
+    transformer_locations = build_transformer_locations(transformers, sections)
+    section_context = _build_section_node_context(sections)
+
+    print("\n========================")
+    print("TRANSFORMER DISCOVERY")
+    print("========================")
+    if transformer_locations.empty:
+        print("No transformer table was provided, or no transformer records were found.")
+    else:
+        print("Transformers found:", len(transformer_locations))
+        print("Transformer location columns:")
+        print(
+            transformer_locations[
+                [
+                    "TransformerIdColumnUsed",
+                    "TransformerSectionColumnUsed",
+                    "TransformerFromNodeColumnUsed",
+                    "TransformerToNodeColumnUsed",
+                    "TransformerPrimaryKvColumnUsed",
+                    "TransformerSecondaryKvColumnUsed",
+                ]
+            ].head(1).to_dict("records")
+        )
 
     capacitor_phase_check = capacitors.merge(
         sections,
@@ -309,36 +941,73 @@ def check_capacitors(capacitors, sections):
         )
 
     # ==================================================
-    # VR6: VOLTAGE MISMATCH
+    # VR6: TRANSFORMER-AWARE VOLTAGE MISMATCH
     # ==================================================
 
     capacitor_voltage_issue_rows = []
+    capacitor_voltage_context_rows = []
 
-    if rated_kv_column and section_voltage_column:
-        for _, row in capacitor_phase_check.iterrows():
-            capacitor_kv = _voltage_kv(row[rated_kv_column])
-            section_kv = _voltage_kv(row[section_voltage_column])
+    # Build this diagnostic for every capacitor, even when no VR6 mismatch exists.
+    # Reviewers can confirm whether VR6 used section voltage or transformer context.
+    for _, row in capacitor_phase_check.iterrows():
+        capacitor_kv = _voltage_kv(row[rated_kv_column]) if rated_kv_column else np.nan
+        voltage_context = _expected_voltage_for_vr6(
+            row,
+            section_voltage_column,
+            transformer_locations,
+            section_context,
+        )
+        expected_kv = voltage_context["ExpectedVoltageKvForCheck"]
 
-            if (
-                pd.isna(capacitor_kv)
-                or capacitor_kv <= 0
-                or pd.isna(section_kv)
-                or section_kv <= 0
-            ):
-                continue
+        percent_difference = np.nan
+        diagnostic_status = "VR6 comparison ready"
 
-            percent_difference = abs(capacitor_kv - section_kv) / section_kv * 100
-            if percent_difference <= VR6_VOLTAGE_TOLERANCE_PCT:
-                continue
+        if not rated_kv_column:
+            diagnostic_status = "Cannot run VR6: capacitor RatedKv column not found"
+        elif not section_voltage_column and not voltage_context.get("TransformerAwareVoltageUsed"):
+            diagnostic_status = "Cannot run VR6: no section voltage column and no transformer voltage context"
+        elif pd.isna(capacitor_kv) or capacitor_kv <= 0:
+            diagnostic_status = "Cannot run VR6: capacitor RatedKv is missing or zero"
+        elif pd.isna(expected_kv) or expected_kv <= 0:
+            diagnostic_status = "Cannot run VR6: expected voltage is missing or zero"
+        else:
+            percent_difference = abs(capacitor_kv - expected_kv) / expected_kv * 100
+            if percent_difference > VR6_VOLTAGE_TOLERANCE_PCT:
+                diagnostic_status = "VR6 mismatch"
+            else:
+                diagnostic_status = "VR6 pass"
 
-            temp = row.copy()
-            temp["CapacitorRatedKvForCheck"] = capacitor_kv
-            temp["SectionVoltageKvForCheck"] = section_kv
-            temp["VoltagePercentDifference"] = percent_difference
-            temp["SectionVoltageColumnUsed"] = section_voltage_column
-            for key, value in _build_capacitor_totals(row).items():
-                temp[key] = value
-            capacitor_voltage_issue_rows.append(temp)
+        context_row = {
+            "CapacitorId": row.get("UniqueDeviceId"),
+            "CapacitorSectionId": row.get("SectionId"),
+            "CapacitorRatedKvColumnUsed": rated_kv_column,
+            "CapacitorRatedKvForCheck": capacitor_kv,
+            "SectionVoltageColumnUsed": section_voltage_column,
+            "SectionVoltageKvForCheck": voltage_context.get("SectionVoltageKvForCheck"),
+            "ExpectedVoltageKvForCheck": expected_kv,
+            "ExpectedVoltageSource": voltage_context.get("ExpectedVoltageSource"),
+            "VoltagePercentDifference": percent_difference,
+            "VR6DiagnosticStatus": diagnostic_status,
+        }
+        context_row.update(voltage_context)
+        capacitor_voltage_context_rows.append(context_row)
+
+        if diagnostic_status != "VR6 mismatch":
+            continue
+
+        temp = row.copy()
+        temp["CapacitorRatedKvForCheck"] = capacitor_kv
+        temp["ExpectedVoltageKvForCheck"] = expected_kv
+        temp["VoltagePercentDifference"] = percent_difference
+        temp["SectionVoltageColumnUsed"] = section_voltage_column
+
+        for key, value in voltage_context.items():
+            temp[key] = value
+
+        for key, value in _build_capacitor_totals(row).items():
+            temp[key] = value
+
+        capacitor_voltage_issue_rows.append(temp)
 
     capacitor_voltage_issues = add_rule_columns(
         pd.DataFrame(capacitor_voltage_issue_rows),
@@ -346,6 +1015,21 @@ def check_capacitors(capacitors, sections):
         element_type="Capacitor",
         element_id="UniqueDeviceId",
     )
+
+    if not capacitor_voltage_issues.empty:
+        capacitor_voltage_issues["Issue"] = "Capacitor voltage mismatch"
+        capacitor_voltage_issues["Description"] = capacitor_voltage_issues.apply(
+            lambda row: (
+                f"Capacitor RatedKv {row.get('CapacitorRatedKvForCheck')} kV does not match "
+                f"expected connected voltage {row.get('ExpectedVoltageKvForCheck')} kV. "
+                f"Voltage source used: {row.get('ExpectedVoltageSource')}."
+            ),
+            axis=1,
+        )
+        capacitor_voltage_issues["RecommendedAction"] = (
+            "Review capacitor RatedKv, connected SectionId, section voltage, and any "
+            "upstream/downstream transformer voltage."
+        )
 
     capacitor_issues = pd.concat(
         [
@@ -358,6 +1042,8 @@ def check_capacitors(capacitors, sections):
     )
 
     results["capacitor_issues"] = capacitor_issues
+    results["transformer_locations"] = transformer_locations
+    results["capacitor_voltage_context"] = pd.DataFrame(capacitor_voltage_context_rows)
 
     print("\n========================")
     print("CAPACITOR SUMMARY")

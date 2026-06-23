@@ -2,6 +2,8 @@ import argparse
 from pathlib import Path
 import subprocess
 
+import pandas as pd
+
 from checks.missingdata import check_missing_data
 from checks.capacitors import check_capacitors
 from checks.fuses import check_open_fuses
@@ -18,6 +20,11 @@ from reports import write_validation_report
 PROJECT_DIR = Path(__file__).resolve().parent
 EXPORTS_DIR = PROJECT_DIR / "data" / "exports"
 DEFAULT_OUTPUT_FILE = EXPORTS_DIR / "synergi_validation_results.xlsx"
+TRANSFORMER_TABLE_NAMES = (
+    "InstDTrans",
+    "InstPrimaryTransformers",
+    "InstSubstationTransformers",
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -47,6 +54,24 @@ def load_table(connection, table_name: str):
         return read_table(connection, table_name)
     except Exception as exc:
         raise RuntimeError(f"Could not load required table [{table_name}]") from exc
+
+
+def load_optional_transformer_tables(connection, available_tables: list[str]) -> pd.DataFrame:
+    transformer_frames = []
+    available_table_set = set(available_tables)
+
+    for table_name in TRANSFORMER_TABLE_NAMES:
+        if table_name not in available_table_set:
+            continue
+
+        transformer_table = read_table(connection, table_name)
+        transformer_table["TransformerSourceTable"] = table_name
+        transformer_frames.append(transformer_table)
+
+    if not transformer_frames:
+        return pd.DataFrame()
+
+    return pd.concat(transformer_frames, ignore_index=True, sort=False)
 
 
 def get_tool_version() -> str | None:
@@ -92,7 +117,8 @@ def main() -> None:
         print("TABLES IN MDB")
         print("========================\n")
 
-        for table_name in list_user_tables(conn):
+        user_tables = list_user_tables(conn)
+        for table_name in user_tables:
             print(table_name)
 
         # =====================================================
@@ -108,12 +134,14 @@ def main() -> None:
         loads = load_table(conn, "Loads")
         capacitors = load_table(conn, "InstCapacitors")
         fuses = load_table(conn, "InstFuses")
+        transformers = load_optional_transformer_tables(conn, user_tables)
 
         print(f"Nodes Loaded: {len(nodes)}")
         print(f"Sections Loaded: {len(sections)}")
         print(f"Loads Loaded: {len(loads)}")
         print(f"Capacitors Loaded: {len(capacitors)}")
         print(f"Fuses Loaded: {len(fuses)}")
+        print(f"Transformers Loaded: {len(transformers)}")
 
         # =====================================================
         # DISPLAY COLUMNS
@@ -137,7 +165,9 @@ def main() -> None:
 
         capacitor_results = check_capacitors(
             capacitors,
-            sections
+            sections,
+            transformers=transformers,
+            nodes=nodes,
         )
 
         fuse_results = check_open_fuses(
