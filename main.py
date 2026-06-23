@@ -14,7 +14,7 @@ from checks.incorrectphases import check_incorrect_phases
 from checks.mismatched_conductors import check_conductor_mismatch
 from mdb_utils import connect_to_mdb, find_default_mdb_file, list_user_tables, read_table
 from reports import write_validation_report
-#from topology import check_loops
+from topology import check_loops, check_unfed_sections
 
 
 PROJECT_DIR = Path(__file__).resolve().parent
@@ -196,7 +196,12 @@ def main() -> None:
             sections
         )
 
-        #topology_results = check_loops(sections)
+        loop_results = check_loops(sections)
+        unfed_topology_results = check_unfed_sections(sections)
+        topology_results = {
+            **loop_results,
+            **unfed_topology_results,
+        }
 
         # =====================================================
         # PRINT RESULTS
@@ -242,19 +247,19 @@ def main() -> None:
         )
 
         print(
-            "Unfed sections:",
-            len(fuse_results['unfed_sections'])
-        )
-
-        print(
             "Conductor height issues:",
             len(height_results['conductor_height_issues'])
         )
 
-        # print(
-        #     "Potential loop sections:",
-        #     len(topology_results['loop_sections'])
-        # )
+        print(
+            "Potential loop sections:",
+            len(loop_results["loop_sections"])
+        )
+
+        print(
+            "Disconnected topology sections:",
+            len(unfed_topology_results["unfed_sections"])
+        )
 
         print(
             "Sections with load records but no connected load:",
@@ -287,7 +292,7 @@ def main() -> None:
             customer_count_results,
             conductor_mismatch_results,
             incorrect_phase_results,
-            #topology_results,
+            topology_results,
             tool_version=get_tool_version(),
         )
 

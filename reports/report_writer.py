@@ -161,7 +161,7 @@ def build_report_tables(
     customer_count_results: dict[str, pd.DataFrame],
     conductor_mismatch_results: dict[str, pd.DataFrame],
     incorrect_phase_results: dict[str, pd.DataFrame],
-    #topology_results: dict[str, pd.DataFrame],
+    topology_results: dict[str, pd.DataFrame],
 ) -> dict[str, pd.DataFrame]:
     return {
         "MissingConnectivity": missing_results["missing_connectivity"],
@@ -171,8 +171,8 @@ def build_report_tables(
         "DuplicateSections": missing_results["duplicate_sections"],
         "CapacitorIssues": capacitor_results["capacitor_issues"],
         "OpenFuses": fuse_results["open_fuses"],
-        "UnfedSections": fuse_results["unfed_sections"],
-        #"LoopSections": topology_results["loop_sections"],
+        "LoopSections": topology_results["loop_sections"],
+        "DisconnectedTopology": topology_results["unfed_sections"],
         "ConductorHeight": height_results["conductor_height_issues"],
         "NoConnectedKVA": load_results["no_connected_kva"],
         "CustomerCount": customer_count_results["customer_count_issues"],
@@ -207,7 +207,7 @@ def write_validation_report(
     customer_count_results: dict[str, pd.DataFrame],
     conductor_mismatch_results: dict[str, pd.DataFrame],
     incorrect_phase_results: dict[str, pd.DataFrame],
-    #topology_results: dict[str, pd.DataFrame],
+    topology_results: dict[str, pd.DataFrame],
     tool_version: str | None = None,
 ) -> None:
     output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -220,7 +220,7 @@ def write_validation_report(
         customer_count_results,
         conductor_mismatch_results,
         incorrect_phase_results,
-        #topology_results,
+        topology_results,
     )
     diagnostic_tables = build_diagnostic_tables(capacitor_results)
     issues = build_issues_log(report_tables)

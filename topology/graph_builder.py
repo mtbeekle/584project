@@ -13,9 +13,10 @@ def build_section_graph(sections: pd.DataFrame) -> nx.Graph:
     Each edge represents one Synergi section.
 
     Current limitation:
-    This first-pass version assumes all sections are active. Later, this will be
+    This first-pass version assumes all sections are active. Later this should be
     refined to exclude normally-open switches, open fuses, inactive sections,
-    or other de-energized equipment.
+    or other de-energized equipment once the correct MDB status fields are
+    confirmed.
     """
     validate_required_columns(
         sections,

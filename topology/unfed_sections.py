@@ -8,7 +8,23 @@ from validation_utils import add_rule_columns, validate_required_columns
 from topology.graph_builder import build_section_graph
 
 
-def check_unfed_sections(sections: pd.DataFrame, source_node_ids: set) -> dict:
+def check_unfed_sections(sections: pd.DataFrame) -> dict:
+    """
+    VR1 - Unfed / disconnected sections
+
+    First-pass source-free implementation.
+
+    Since the MDB does not provide explicit source_node_ids, this check uses
+    connected components as an a priori topology validation method.
+
+    The largest connected component is treated as the main feeder/model
+    component. Sections outside that component are flagged as disconnected
+    topology sections.
+
+    Limitation:
+    This does not prove electrical energization from a true source. It flags
+    sections disconnected from the main topology component.
+    """
     validate_required_columns(
         sections,
         "sections",
@@ -17,22 +33,51 @@ def check_unfed_sections(sections: pd.DataFrame, source_node_ids: set) -> dict:
 
     graph = build_section_graph(sections)
 
-    reachable_nodes = set()
+    if graph.number_of_nodes() == 0:
+        unfed_sections = add_rule_columns(
+            sections.copy(),
+            rule=get_rule("VR1"),
+            element_type="Section",
+            element_id="SectionId",
+        )
+        return {"unfed_sections": unfed_sections}
 
-    for source_node in source_node_ids:
-        if source_node in graph:
-            reachable_nodes.update(nx.node_connected_component(graph, source_node))
+    components = list(nx.connected_components(graph))
+
+    if not components:
+        unfed_sections = add_rule_columns(
+            sections.copy(),
+            rule=get_rule("VR1"),
+            element_type="Section",
+            element_id="SectionId",
+        )
+        return {"unfed_sections": unfed_sections}
+
+    main_component = max(components, key=len)
 
     unfed_mask = (
-        ~sections["FromNodeId"].isin(reachable_nodes)
-        & ~sections["ToNodeId"].isin(reachable_nodes)
+        sections["FromNodeId"].notna()
+        & sections["ToNodeId"].notna()
+        & ~sections["FromNodeId"].isin(main_component)
+        & ~sections["ToNodeId"].isin(main_component)
     )
 
     unfed_sections = add_rule_columns(
-        sections[unfed_mask],
+        sections[unfed_mask].copy(),
         rule=get_rule("VR1"),
         element_type="Section",
         element_id="SectionId",
     )
+
+    if not unfed_sections.empty:
+        unfed_sections["Issue"] = "Disconnected topology section"
+        unfed_sections["Description"] = (
+            "Section is outside the largest connected topology component. "
+            "This indicates a possible unfed or disconnected island."
+        )
+        unfed_sections["RecommendedAction"] = (
+            "Review section connectivity, upstream path, open devices, and whether "
+            "this disconnected island is intentional."
+        )
 
     return {"unfed_sections": unfed_sections}
