@@ -35,10 +35,10 @@ def _build_count_rows(values: pd.Series) -> list[dict[str, object]]:
     ]
 
 
-def build_issues_log(report_tables: dict[str, pd.DataFrame]) -> pd.DataFrame:
+def build_issues_log(issue_tables: dict[str, pd.DataFrame]) -> pd.DataFrame:
     issue_frames = []
 
-    for sheet_name, dataframe in report_tables.items():
+    for sheet_name, dataframe in issue_tables.items():
         if dataframe.empty:
             continue
 
@@ -61,7 +61,7 @@ def build_issues_log(report_tables: dict[str, pd.DataFrame]) -> pd.DataFrame:
 
 
 def build_summary_tables(
-    report_tables: dict[str, pd.DataFrame],
+    issue_tables: dict[str, pd.DataFrame],
     issues: pd.DataFrame,
     mdb_file: Path,
     tool_version: str | None,
@@ -82,7 +82,7 @@ def build_summary_tables(
     validation_counts = pd.DataFrame(
         [
             {"Check": sheet_name, "Count": len(dataframe)}
-            for sheet_name, dataframe in report_tables.items()
+            for sheet_name, dataframe in issue_tables.items()
         ]
     )
     severity_counts = pd.DataFrame(
@@ -152,7 +152,7 @@ def write_summary_sheet(
     format_summary_sheet(worksheet)
 
 
-def build_report_tables(
+def build_issue_tables(
     missing_results: dict[str, pd.DataFrame],
     capacitor_results: dict[str, pd.DataFrame],
     regulator_results: dict[str, pd.DataFrame],
@@ -162,7 +162,7 @@ def build_report_tables(
     customer_count_results: dict[str, pd.DataFrame],
     conductor_mismatch_results: dict[str, pd.DataFrame],
     incorrect_phase_results: dict[str, pd.DataFrame],
-    #topology_results: dict[str, pd.DataFrame],
+    topology_results: dict[str, pd.DataFrame],
 ) -> dict[str, pd.DataFrame]:
     return {
         "MissingConnectivity": missing_results["missing_connectivity"],
@@ -173,13 +173,103 @@ def build_report_tables(
         "CapacitorIssues": capacitor_results["capacitor_issues"],
         "RegulatorIssues": regulator_results["regulator_issues"],
         "OpenFuses": fuse_results["open_fuses"],
-        "UnfedSections": fuse_results["unfed_sections"],
-        #"LoopSections": topology_results["loop_sections"],
+        "LoopSummary": topology_results.get(
+            "loop_summary",
+            topology_results.get("loop_sections", pd.DataFrame()),
+        ),
+        "LoopReviewSummary": topology_results.get(
+            "loop_review_summary",
+            pd.DataFrame(),
+        ),
+        "DisconnectedTopology": topology_results["unfed_sections"],
         "ConductorHeight": height_results["conductor_height_issues"],
         "NoConnectedKVA": load_results["no_connected_kva"],
         "CustomerCount": customer_count_results["customer_count_issues"],
         "ConductorMismatch": conductor_mismatch_results["conductor_issues"],
         "IncorrectPhases": incorrect_phase_results["incorrect_phases"],
+    }
+
+
+def build_report_tables(
+    missing_results: dict[str, pd.DataFrame],
+    capacitor_results: dict[str, pd.DataFrame],
+    regulator_results: dict[str, pd.DataFrame],
+    fuse_results: dict[str, pd.DataFrame],
+    height_results: dict[str, pd.DataFrame],
+    load_results: dict[str, pd.DataFrame],
+    customer_count_results: dict[str, pd.DataFrame],
+    conductor_mismatch_results: dict[str, pd.DataFrame],
+    incorrect_phase_results: dict[str, pd.DataFrame],
+    topology_results: dict[str, pd.DataFrame],
+) -> dict[str, pd.DataFrame]:
+    return build_issue_tables(
+        missing_results,
+        capacitor_results,
+        regulator_results,
+        fuse_results,
+        height_results,
+        load_results,
+        customer_count_results,
+        conductor_mismatch_results,
+        incorrect_phase_results,
+        topology_results,
+    )
+
+
+def build_diagnostic_tables(
+    capacitor_results: dict[str, pd.DataFrame],
+    regulator_results: dict[str, pd.DataFrame],
+    topology_results: dict[str, pd.DataFrame],
+) -> dict[str, pd.DataFrame]:
+    return {
+        "CapVoltageContext": capacitor_results.get(
+            "capacitor_voltage_context",
+            pd.DataFrame(),
+        ),
+        "TransformerLocations": capacitor_results.get(
+            "transformer_locations",
+            pd.DataFrame(),
+        ),
+        "RegulatorContext": regulator_results.get(
+            "regulator_context",
+            pd.DataFrame(),
+        ),
+        "TopologyComponents": topology_results.get(
+            "topology_components",
+            pd.DataFrame(),
+        ),
+        "LoopSectionDetails": topology_results.get(
+            "loop_section_details",
+            pd.DataFrame(),
+        ),
+        "LoopReviewSectionDetails": topology_results.get(
+            "loop_review_section_details",
+            pd.DataFrame(),
+        ),
+        "LoopSections": topology_results.get(
+            "loop_sections",
+            pd.DataFrame(),
+        ),
+        "LoopDiagnostics": topology_results.get(
+            "loop_diagnostics",
+            pd.DataFrame(),
+        ),
+        "PhysicalCycleDiagnostics": topology_results.get(
+            "physical_cycle_diagnostics",
+            pd.DataFrame(),
+        ),
+        "TopologySelfLoops": topology_results.get(
+            "topology_self_loops",
+            pd.DataFrame(),
+        ),
+        "TopologyDuplicateSectionIds": topology_results.get(
+            "topology_duplicate_section_ids",
+            pd.DataFrame(),
+        ),
+        "TopologyParallelSections": topology_results.get(
+            "topology_parallel_sections",
+            pd.DataFrame(),
+        ),
     }
 
 
@@ -195,11 +285,11 @@ def write_validation_report(
     customer_count_results: dict[str, pd.DataFrame],
     conductor_mismatch_results: dict[str, pd.DataFrame],
     incorrect_phase_results: dict[str, pd.DataFrame],
-    #topology_results: dict[str, pd.DataFrame],
+    topology_results: dict[str, pd.DataFrame],
     tool_version: str | None = None,
 ) -> None:
     output_file.parent.mkdir(parents=True, exist_ok=True)
-    report_tables = build_report_tables(
+    issue_tables = build_issue_tables(
         missing_results,
         capacitor_results,
         regulator_results,
@@ -209,11 +299,16 @@ def write_validation_report(
         customer_count_results,
         conductor_mismatch_results,
         incorrect_phase_results,
-        #topology_results,
+        topology_results,
     )
-    issues = build_issues_log(report_tables)
+    diagnostic_tables = build_diagnostic_tables(
+        capacitor_results,
+        regulator_results,
+        topology_results,
+    )
+    issues = build_issues_log(issue_tables)
     summary_tables = build_summary_tables(
-        report_tables,
+        issue_tables,
         issues,
         mdb_file,
         tool_version,
@@ -224,17 +319,10 @@ def write_validation_report(
         issues.to_excel(writer, sheet_name="Issues", index=False)
         format_report_sheet(writer.sheets["Issues"])
 
-        for sheet_name, dataframe in report_tables.items():
+        for sheet_name, dataframe in issue_tables.items():
             dataframe.to_excel(writer, sheet_name=sheet_name, index=False)
             format_report_sheet(writer.sheets[sheet_name])
 
-        diagnostic_tables = {
-            "TransformerDiscovery": capacitor_results.get("transformer_locations"),
-            "CapVoltageContext": capacitor_results.get("capacitor_voltage_context"),
-            "RegulatorContext": regulator_results.get("regulator_context"),
-        }
         for sheet_name, dataframe in diagnostic_tables.items():
-            if dataframe is None:
-                continue
             dataframe.to_excel(writer, sheet_name=sheet_name, index=False)
             format_report_sheet(writer.sheets[sheet_name])

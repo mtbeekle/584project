@@ -2,6 +2,8 @@ import argparse
 from pathlib import Path
 import subprocess
 
+import pandas as pd
+
 from checks.missingdata import check_missing_data
 from checks.capacitors import check_capacitors
 from checks.regulators import check_regulators
@@ -13,12 +15,32 @@ from checks.incorrectphases import check_incorrect_phases
 from checks.mismatched_conductors import check_conductor_mismatch
 from mdb_utils import connect_to_mdb, find_default_mdb_file, list_user_tables, read_table
 from reports import write_validation_report
-#from topology import check_loops
+from topology import check_loops, check_unfed_sections
 
 
 PROJECT_DIR = Path(__file__).resolve().parent
 EXPORTS_DIR = PROJECT_DIR / "data" / "exports"
 DEFAULT_OUTPUT_FILE = EXPORTS_DIR / "synergi_validation_results.xlsx"
+
+
+TRANSFORMER_TABLE_CANDIDATES = [
+    "InstDTrans",
+    "InstPrimaryTransformers",
+    "InstSubstationTransformers",
+    "InstTranLine",
+    "InstTranVertices",
+]
+
+REGULATOR_TABLE_CANDIDATES = [
+    "InstRegulators",
+    "InstRegulator",
+    "InstVoltageRegulators",
+    "InstVoltageRegulator",
+    "VoltageRegulators",
+    "VoltageRegulator",
+    "Regulators",
+    "Regulator",
+]
 
 
 def parse_args() -> argparse.Namespace:
@@ -50,15 +72,6 @@ def load_table(connection, table_name: str):
         raise RuntimeError(f"Could not load required table [{table_name}]") from exc
 
 
-TRANSFORMER_TABLE_CANDIDATES = [
-    "InstDTrans",
-    "InstPrimaryTransformers",
-    "InstSubstationTransformers",
-    "InstTranLine",
-    "InstTranVertices",
-]
-
-
 def find_transformer_table_names(table_names: list[str]) -> list[str]:
     lookup = {name.strip().lower(): name for name in table_names}
     matches: list[str] = []
@@ -82,8 +95,6 @@ def find_transformer_table_names(table_names: list[str]) -> list[str]:
 
 
 def load_transformer_tables(connection, table_names: list[str]):
-    import pandas as pd
-
     transformer_table_names = find_transformer_table_names(table_names)
     frames = []
 
@@ -105,18 +116,6 @@ def load_transformer_tables(connection, table_names: list[str]):
     return pd.concat(frames, ignore_index=True, sort=False), transformer_table_names
 
 
-REGULATOR_TABLE_CANDIDATES = [
-    "InstRegulators",
-    "InstRegulator",
-    "InstVoltageRegulators",
-    "InstVoltageRegulator",
-    "VoltageRegulators",
-    "VoltageRegulator",
-    "Regulators",
-    "Regulator",
-]
-
-
 def find_regulator_table_names(table_names: list[str]) -> list[str]:
     lookup = {name.strip().lower(): name for name in table_names}
     matches: list[str] = []
@@ -136,8 +135,6 @@ def find_regulator_table_names(table_names: list[str]) -> list[str]:
 
 
 def load_regulator_tables(connection, table_names: list[str]):
-    import pandas as pd
-
     regulator_table_names = find_regulator_table_names(table_names)
     frames = []
 
@@ -194,10 +191,6 @@ def main() -> None:
     with connect_to_mdb(mdb_file) as conn:
         print("Connected successfully!")
 
-        # =====================================================
-        # LIST TABLES
-        # =====================================================
-
         print("\n========================")
         print("TABLES IN MDB")
         print("========================\n")
@@ -205,10 +198,6 @@ def main() -> None:
         user_tables = list(list_user_tables(conn))
         for table_name in user_tables:
             print(table_name)
-
-        # =====================================================
-        # LOAD TABLES
-        # =====================================================
 
         print("\n========================")
         print("LOADING TABLES")
@@ -227,6 +216,7 @@ def main() -> None:
         print(f"Loads Loaded: {len(loads)}")
         print(f"Capacitors Loaded: {len(capacitors)}")
         print(f"Fuses Loaded: {len(fuses)}")
+
         if transformers is None:
             print("Transformers Loaded: 0 - no transformer table found")
             if transformer_table_names:
@@ -243,10 +233,6 @@ def main() -> None:
             print(f"Regulator tables detected: {regulator_table_names}")
             print(f"Regulator rows loaded total: {len(regulators)}")
 
-        # =====================================================
-        # DISPLAY COLUMNS
-        # =====================================================
-
         print("\n========================")
         print("NODE COLUMNS")
         print("========================")
@@ -256,10 +242,6 @@ def main() -> None:
         print("SECTION COLUMNS")
         print("========================")
         print(sections.columns.tolist())
-
-        # =====================================================
-        # RUN VALIDATION CHECKS
-        # =====================================================
 
         missing_results = check_missing_data(sections)
 
@@ -279,114 +261,65 @@ def main() -> None:
 
         fuse_results = check_open_fuses(
             fuses,
-            sections
+            sections,
         )
 
         height_results = check_conductor_height(
-            sections
+            sections,
         )
 
         load_results = check_connected_kva(
             loads,
-            sections
+            sections,
         )
 
         customer_count_results = check_customer_count(
-            loads
+            loads,
         )
 
         conductor_mismatch_results = check_conductor_mismatch(
-            sections
+            sections,
         )
 
         incorrect_phase_results = check_incorrect_phases(
-            sections
+            sections,
         )
 
-        #topology_results = check_loops(sections)
-
-        # =====================================================
-        # PRINT RESULTS
-        # =====================================================
+        loop_results = check_loops(sections)
+        unfed_topology_results = check_unfed_sections(sections)
+        topology_results = {
+            **loop_results,
+            **unfed_topology_results,
+        }
 
         print("\n========================")
         print("VALIDATION RESULTS")
         print("========================\n")
 
-        print(
-            "Sections missing connectivity:",
-            len(missing_results['missing_connectivity'])
-        )
+        print("Sections missing connectivity:", len(missing_results["missing_connectivity"]))
+        print("Sections missing length:", len(missing_results["missing_length"]))
+        print("Sections missing phase data:", len(missing_results["missing_phase"]))
+        print("Sections missing conductor:", len(missing_results["missing_conductor"]))
+        print("Duplicate Section IDs:", len(missing_results["duplicate_sections"]))
+        print("Capacitor issues:", len(capacitor_results["capacitor_issues"]))
+        print("Regulator issues:", len(regulator_results["regulator_issues"]))
+        print("Open fuses:", len(fuse_results["open_fuses"]))
+        print("Conductor height issues:", len(height_results["conductor_height_issues"]))
+        print("Potential loop/meshed topology review sections:", len(loop_results["loop_sections"]))
+        print("Topology cycle summary records:", len(loop_results["loop_summary"]))
+        print("Topology cycle review records:", len(loop_results["loop_review_summary"]))
+        print("Physical cycle diagnostic records:", len(loop_results["physical_cycle_diagnostics"]))
 
-        print(
-            "Sections missing length:",
-            len(missing_results['missing_length'])
-        )
+        if not loop_results["loop_diagnostics"].empty:
+            print("\nLoop diagnostics:")
+            for _, row in loop_results["loop_diagnostics"].iterrows():
+                print(f"  {row['Check']}: {row['Count']}")
 
-        print(
-            "Sections missing phase data:",
-            len(missing_results['missing_phase'])
-        )
-
-        print(
-            "Sections missing conductor:",
-            len(missing_results['missing_conductor'])
-        )
-
-        print(
-            "Duplicate Section IDs:",
-            len(missing_results['duplicate_sections'])
-        )
-
-        print(
-            "Capacitor issues:",
-            len(capacitor_results['capacitor_issues'])
-        )
-
-        print(
-            "Regulator issues:",
-            len(regulator_results['regulator_issues'])
-        )
-
-        print(
-            "Open fuses:",
-            len(fuse_results['open_fuses'])
-        )
-
-        print(
-            "Unfed sections:",
-            len(fuse_results['unfed_sections'])
-        )
-
-        print(
-            "Conductor height issues:",
-            len(height_results['conductor_height_issues'])
-        )
-
-        # print(
-        #     "Potential loop sections:",
-        #     len(topology_results['loop_sections'])
-        # )
-
-        print(
-            "Sections with load records but no connected load:",
-            len(load_results['no_connected_kva'])
-        )
-
-        print(
-            "Customer count issues:",
-            len(customer_count_results['customer_count_issues'])
-        )
-
-        print(
-            "Conductor configuration issues:",
-            len(conductor_mismatch_results['conductor_issues'])
-        )
-
-        print(
-            "Incorrect phase issues:",
-            len(incorrect_phase_results['incorrect_phases'])
-        )
+        print("Isolated topology component review sections:", len(unfed_topology_results["unfed_sections"]))
+        print("Sections with load records but no connected load:", len(load_results["no_connected_kva"]))
+        print("Customer count issues:", len(customer_count_results["customer_count_issues"]))
+        print("Conductor configuration issues:", len(conductor_mismatch_results["conductor_issues"]))
+        print("Incorrect phase issues:", len(incorrect_phase_results["incorrect_phases"]))
 
         write_validation_report(
             output_file,
@@ -400,7 +333,7 @@ def main() -> None:
             customer_count_results,
             conductor_mismatch_results,
             incorrect_phase_results,
-            #topology_results,
+            topology_results,
             tool_version=get_tool_version(),
         )
 

@@ -2,3 +2,4 @@ pandas
 pyodbc
 openpyxl
 networkx
+pytest
