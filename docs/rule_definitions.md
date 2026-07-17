@@ -263,7 +263,7 @@ Phase values are normalized before comparison. A future graph traversal may be n
 
 **Implementation Notes:**
 
-This rule identifies load records with positive per-phase kW and no per-phase customers. The implementation sums `Phase1Kw`, `Phase2Kw`, and `Phase3Kw`, then flags records where `Phase1Customers`, `Phase2Customers`, and `Phase3Customers` sum to zero or blank.
+This rule identifies non-spot load records with connected load and no per-phase customers. The implementation uses the same preferred connected-load basis as VR10, favoring per-phase kVA when available before falling back to other phase power groups or total kVA fields. Rows marked `IsSpotLoad` are skipped because spot loads may intentionally carry modeled load without customer counts.
 
 Some records may intentionally have no customer count, so sponsor guidance may be needed to determine when the field is required.
 

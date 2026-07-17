@@ -155,6 +155,7 @@ def write_summary_sheet(
 def build_issue_tables(
     missing_results: dict[str, pd.DataFrame],
     capacitor_results: dict[str, pd.DataFrame],
+    regulator_results: dict[str, pd.DataFrame],
     fuse_results: dict[str, pd.DataFrame],
     height_results: dict[str, pd.DataFrame],
     load_results: dict[str, pd.DataFrame],
@@ -170,6 +171,7 @@ def build_issue_tables(
         "MissingConductor": missing_results["missing_conductor"],
         "DuplicateSections": missing_results["duplicate_sections"],
         "CapacitorIssues": capacitor_results["capacitor_issues"],
+        "RegulatorIssues": regulator_results["regulator_issues"],
         "OpenFuses": fuse_results["open_fuses"],
         "LoopSummary": topology_results.get(
             "loop_summary",
@@ -191,6 +193,7 @@ def build_issue_tables(
 def build_report_tables(
     missing_results: dict[str, pd.DataFrame],
     capacitor_results: dict[str, pd.DataFrame],
+    regulator_results: dict[str, pd.DataFrame],
     fuse_results: dict[str, pd.DataFrame],
     height_results: dict[str, pd.DataFrame],
     load_results: dict[str, pd.DataFrame],
@@ -202,6 +205,7 @@ def build_report_tables(
     return build_issue_tables(
         missing_results,
         capacitor_results,
+        regulator_results,
         fuse_results,
         height_results,
         load_results,
@@ -214,6 +218,7 @@ def build_report_tables(
 
 def build_diagnostic_tables(
     capacitor_results: dict[str, pd.DataFrame],
+    regulator_results: dict[str, pd.DataFrame],
     topology_results: dict[str, pd.DataFrame],
 ) -> dict[str, pd.DataFrame]:
     return {
@@ -223,6 +228,10 @@ def build_diagnostic_tables(
         ),
         "TransformerLocations": capacitor_results.get(
             "transformer_locations",
+            pd.DataFrame(),
+        ),
+        "RegulatorContext": regulator_results.get(
+            "regulator_context",
             pd.DataFrame(),
         ),
         "TopologyComponents": topology_results.get(
@@ -269,6 +278,7 @@ def write_validation_report(
     mdb_file: Path,
     missing_results: dict[str, pd.DataFrame],
     capacitor_results: dict[str, pd.DataFrame],
+    regulator_results: dict[str, pd.DataFrame],
     fuse_results: dict[str, pd.DataFrame],
     height_results: dict[str, pd.DataFrame],
     load_results: dict[str, pd.DataFrame],
@@ -282,6 +292,7 @@ def write_validation_report(
     issue_tables = build_issue_tables(
         missing_results,
         capacitor_results,
+        regulator_results,
         fuse_results,
         height_results,
         load_results,
@@ -290,7 +301,11 @@ def write_validation_report(
         incorrect_phase_results,
         topology_results,
     )
-    diagnostic_tables = build_diagnostic_tables(capacitor_results, topology_results)
+    diagnostic_tables = build_diagnostic_tables(
+        capacitor_results,
+        regulator_results,
+        topology_results,
+    )
     issues = build_issues_log(issue_tables)
     summary_tables = build_summary_tables(
         issue_tables,
