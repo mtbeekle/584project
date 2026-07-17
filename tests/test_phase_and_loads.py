@@ -13,7 +13,7 @@ def test_parse_phase_set_supports_synergi_numeric_bitmasks():
     assert parse_phase_set(7) == {"A", "B", "C"}
 
 
-def test_connected_kva_flags_sections_with_no_load_rows():
+def test_connected_kva_does_not_flag_sections_without_load_records():
     sections = pd.DataFrame(
         {
             "SectionId": ["S1", "S2"],
@@ -30,8 +30,28 @@ def test_connected_kva_flags_sections_with_no_load_rows():
 
     results = check_connected_kva(loads, sections)
 
+    assert results["no_connected_kva"].empty
+
+
+def test_connected_kva_flags_load_records_with_zero_kva():
+    sections = pd.DataFrame(
+        {
+            "SectionId": ["S1", "S2"],
+        }
+    )
+    loads = pd.DataFrame(
+        {
+            "SectionId": ["S1", "S2"],
+            "Phase1Kva": [10, 0],
+            "Phase2Kva": [0, 0],
+            "Phase3Kva": [0, 0],
+        }
+    )
+
+    results = check_connected_kva(loads, sections)
+
     assert results["no_connected_kva"]["SectionId"].tolist() == ["S2"]
-    assert results["no_connected_kva"].iloc[0]["LoadRecordCount"] == 0
+    assert results["no_connected_kva"].iloc[0]["LoadRecordCount"] == 1
 
 
 def test_connected_kva_derives_apparent_power_from_kw_and_kvar():

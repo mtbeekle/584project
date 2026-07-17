@@ -52,6 +52,12 @@ SOURCE_TABLE_CANDIDATES = [
     "InstSource",
 ]
 
+LOAD_TABLE_CANDIDATES = [
+    "Loads",
+    "InstLargeCust",
+    "InstProjLoads",
+]
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -216,6 +222,41 @@ def load_source_tables(connection, table_names: list[str]):
     return pd.concat(frames, ignore_index=True, sort=False), source_table_names
 
 
+def find_load_table_names(table_names: list[str]) -> list[str]:
+    lookup = {name.strip().lower(): name for name in table_names}
+    return [
+        match
+        for candidate in LOAD_TABLE_CANDIDATES
+        if (match := lookup.get(candidate.lower()))
+    ]
+
+
+def load_load_tables(connection, table_names: list[str]):
+    load_table_names = find_load_table_names(table_names)
+    frames = []
+
+    for table_name in load_table_names:
+        try:
+            table = read_table(connection, table_name)
+        except Exception as exc:
+            print(f"Warning: found optional load table [{table_name}] but could not load it: {exc}")
+            continue
+
+        if table.empty:
+            print(f"Load table skipped: {table_name} (0 rows)")
+            continue
+
+        table = table.copy()
+        table.insert(0, "LoadSourceTable", table_name)
+        frames.append(table)
+        print(f"Load table loaded: {table_name} ({len(table)} rows)")
+
+    if not frames:
+        return pd.DataFrame(), load_table_names
+
+    return pd.concat(frames, ignore_index=True, sort=False), load_table_names
+
+
 def load_feeder_topology_config(path: Path | None) -> pd.DataFrame | None:
     if path is None:
         return None
@@ -284,7 +325,7 @@ def main() -> None:
 
         nodes = load_table(conn, "Node")
         sections = load_table(conn, "InstSection")
-        loads = load_table(conn, "Loads")
+        loads, load_table_names = load_load_tables(conn, user_tables)
         capacitors = load_table(conn, "InstCapacitors")
         fuses = load_table(conn, "InstFuses")
         transformers, transformer_table_names = load_transformer_tables(conn, user_tables)
@@ -293,7 +334,8 @@ def main() -> None:
 
         print(f"Nodes Loaded: {len(nodes)}")
         print(f"Sections Loaded: {len(sections)}")
-        print(f"Loads Loaded: {len(loads)}")
+        print(f"Load tables detected: {load_table_names}")
+        print(f"Load rows loaded total: {len(loads)}")
         print(f"Capacitors Loaded: {len(capacitors)}")
         print(f"Fuses Loaded: {len(fuses)}")
 

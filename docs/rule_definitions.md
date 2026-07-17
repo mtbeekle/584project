@@ -195,7 +195,9 @@ Sponsor guidance is needed to define the exact expected arrangement.
 
 **Implementation Notes:**
 
-This rule identifies feeders or sections with load records but no connected load value. The implementation may use total kVA fields or summed per-phase kVA, kW, or kVAR fields depending on the available MDB schema.
+This rule identifies feeders or sections with load-source records but no connected load value. It does not assume every physical conductor section should have load. The implementation uses `Loads` plus operational supplemental load tables such as `InstLargeCust` and `InstProjLoads` when present. Scenario/year tables such as `InstMymLoads` are not included by default because they can duplicate load records across planning years.
+
+The implementation uses total kVA fields or summed per-phase kVA when available. When only kW and kVAR are available, it derives apparent power using `sqrt(kW^2 + kVAR^2)`.
 
 Some feeders or sections may intentionally have no connected load, so this rule is classified as a warning.
 

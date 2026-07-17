@@ -5,18 +5,27 @@ PHASE_KVA_COLUMNS = [
     "Phase1Kva",
     "Phase2Kva",
     "Phase3Kva",
+    "Phase1kva",
+    "Phase2kva",
+    "Phase3kva",
 ]
 
 PHASE_KW_COLUMNS = [
     "Phase1Kw",
     "Phase2Kw",
     "Phase3Kw",
+    "LoadPhase1Kw",
+    "LoadPhase2Kw",
+    "LoadPhase3Kw",
 ]
 
 PHASE_KVAR_COLUMNS = [
     "Phase1Kvar",
     "Phase2Kvar",
     "Phase3Kvar",
+    "LoadPhase1Kvar",
+    "LoadPhase2Kvar",
+    "LoadPhase3Kvar",
 ]
 
 KVA_COLUMN_CANDIDATES = [
@@ -31,11 +40,41 @@ KVA_COLUMN_CANDIDATES = [
     "BillingKVA",
 ]
 
+TOTAL_KW_COLUMN_CANDIDATES = [
+    "TotalKw",
+    "TotalKW",
+    "ConnectedKw",
+    "ConnectedKW",
+    "LoadKw",
+    "LoadKW",
+]
+
+TOTAL_KVAR_COLUMN_CANDIDATES = [
+    "TotalKvar",
+    "TotalKVAR",
+    "ConnectedKvar",
+    "ConnectedKVAR",
+    "LoadKvar",
+    "LoadKVAR",
+]
+
 
 PHASE_POWER_COLUMN_GROUPS = {
-    "KVA": PHASE_KVA_COLUMNS,
-    "KW": PHASE_KW_COLUMNS,
-    "KVAR": PHASE_KVAR_COLUMNS,
+    "KVA": [
+        ["Phase1Kva", "Phase1kva"],
+        ["Phase2Kva", "Phase2kva"],
+        ["Phase3Kva", "Phase3kva"],
+    ],
+    "KW": [
+        ["Phase1Kw", "LoadPhase1Kw"],
+        ["Phase2Kw", "LoadPhase2Kw"],
+        ["Phase3Kw", "LoadPhase3Kw"],
+    ],
+    "KVAR": [
+        ["Phase1Kvar", "LoadPhase1Kvar"],
+        ["Phase2Kvar", "LoadPhase2Kvar"],
+        ["Phase3Kvar", "LoadPhase3Kvar"],
+    ],
 }
 
 
@@ -47,20 +86,48 @@ def numeric_sum(dataframe: pd.DataFrame, columns: list[str]) -> pd.Series:
     return numeric_values.sum(axis=1)
 
 
+def _column_lookup(dataframe: pd.DataFrame) -> dict[str, list[str]]:
+    lookup = {}
+    for column in dataframe.columns:
+        lookup.setdefault(str(column).strip().lower(), []).append(column)
+    return lookup
+
+
+def _find_existing_columns(dataframe: pd.DataFrame, candidates: list[str]) -> list[str]:
+    lookup = _column_lookup(dataframe)
+    columns = []
+    for candidate in candidates:
+        for column in lookup.get(candidate.lower(), []):
+            if column not in columns and dataframe[column].notna().any():
+                columns.append(column)
+    return columns
+
+
 def find_phase_power_column_groups(loads: pd.DataFrame) -> dict[str, list[str]]:
-    return {
-        unit: columns
-        for unit, columns in PHASE_POWER_COLUMN_GROUPS.items()
-        if all(column in loads.columns for column in columns)
-    }
+    groups = {}
+    for unit, phase_candidates in PHASE_POWER_COLUMN_GROUPS.items():
+        columns = []
+        for candidates in phase_candidates:
+            matched = _find_existing_columns(loads, candidates)
+            if not matched:
+                columns = []
+                break
+            columns.extend(matched)
+        if columns:
+            groups[unit] = columns
+    return groups
 
 
 def find_total_kva_columns(loads: pd.DataFrame) -> list[str]:
-    return [
-        column
-        for column in KVA_COLUMN_CANDIDATES
-        if column in loads.columns
-    ]
+    return _find_existing_columns(loads, KVA_COLUMN_CANDIDATES)
+
+
+def find_total_kw_columns(loads: pd.DataFrame) -> list[str]:
+    return _find_existing_columns(loads, TOTAL_KW_COLUMN_CANDIDATES)
+
+
+def find_total_kvar_columns(loads: pd.DataFrame) -> list[str]:
+    return _find_existing_columns(loads, TOTAL_KVAR_COLUMN_CANDIDATES)
 
 
 def checked_power_columns() -> list[str]:
@@ -69,6 +136,8 @@ def checked_power_columns() -> list[str]:
         + PHASE_KW_COLUMNS
         + PHASE_KVAR_COLUMNS
         + KVA_COLUMN_CANDIDATES
+        + TOTAL_KW_COLUMN_CANDIDATES
+        + TOTAL_KVAR_COLUMN_CANDIDATES
     )
 
 
