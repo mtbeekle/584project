@@ -66,7 +66,7 @@ def _find_col(dataframe: pd.DataFrame | None, names: list[str]) -> str | None:
     lookup = {_key(column): column for column in dataframe.columns}
     for name in names:
         matched = lookup.get(_key(name))
-        if matched:
+        if matched and dataframe[matched].notna().any():
             return matched
     return None
 
@@ -133,18 +133,7 @@ def _expected_voltage(row: pd.Series, expected_voltage_col: str | None) -> tuple
     return _by_phase_expected_voltage(row)
 
 
-def check_source_voltage(sources: pd.DataFrame | None) -> dict[str, pd.DataFrame]:
-    """
-    VR3 - source voltage mismatch.
-
-    Compares a source/feed nominal voltage against an expected feeder/system
-    voltage when both values are available. Rows without enough voltage evidence
-    are recorded in the diagnostic context but are not reported as issues.
-    """
-    sources = clean_column_names(sources)
-    if sources.empty:
-        return _empty_results()
-
+def _check_source_group(sources: pd.DataFrame) -> tuple[list[pd.Series], list[dict[str, object]]]:
     source_id_col = _find_col(sources, SOURCE_ID_COLUMNS)
     source_voltage_col = _find_col(sources, SOURCE_VOLTAGE_COLUMNS)
     expected_voltage_col = _find_col(sources, EXPECTED_VOLTAGE_COLUMNS)
@@ -159,15 +148,19 @@ def check_source_voltage(sources: pd.DataFrame | None) -> dict[str, pd.DataFrame
 
         if not source_voltage_col:
             status = "Cannot run VR3: source nominal voltage column not found"
+            execution_status = "NOT_RUN"
             percent_difference = float("nan")
         elif not _valid_kv(source_kv):
             status = "Cannot run VR3: source nominal voltage is missing, zero, or unreadable"
+            execution_status = "NOT_RUN"
             percent_difference = float("nan")
         elif not _valid_kv(expected_kv):
             status = "Cannot run VR3: expected feeder/system voltage is missing, zero, or unreadable"
+            execution_status = "NOT_RUN"
             percent_difference = float("nan")
         else:
             percent_difference = abs(source_kv - expected_kv) / expected_kv * 100
+            execution_status = "ISSUE" if percent_difference > VR3_VOLTAGE_TOLERANCE_PCT else "PASS"
             status = (
                 "VR3 source voltage mismatch"
                 if percent_difference > VR3_VOLTAGE_TOLERANCE_PCT
@@ -175,12 +168,14 @@ def check_source_voltage(sources: pd.DataFrame | None) -> dict[str, pd.DataFrame
             )
 
         context = {
+            "SourceTable": row["SourceTable"] if "SourceTable" in row.index else None,
             "SourceIdForCheck": source_id,
             "SourceVoltageColumnUsed": source_voltage_col,
             "SourceVoltageKvForCheck": source_kv,
             "ExpectedVoltageColumnUsed": expected_source,
             "ExpectedVoltageKvForCheck": expected_kv,
             "VoltagePercentDifference": percent_difference,
+            "RuleExecutionStatus": execution_status,
             "VR3VoltageStatus": status,
         }
         context_rows.append(context)
@@ -192,6 +187,38 @@ def check_source_voltage(sources: pd.DataFrame | None) -> dict[str, pd.DataFrame
         for key, value in context.items():
             temp[key] = value
         issue_rows.append(temp)
+
+    return issue_rows, context_rows
+
+
+def check_source_voltage(sources: pd.DataFrame | None) -> dict[str, pd.DataFrame]:
+    """
+    VR3 - source voltage mismatch.
+
+    Compares a source/feeder nominal voltage against an expected feeder/system
+    voltage when both values are available. Source tables are adapted
+    independently so one optional table's schema cannot control another table's
+    column mapping. Rows without enough evidence are marked NOT_RUN in the
+    diagnostic context and are not reported as sponsor-facing issues.
+    """
+    sources = clean_column_names(sources)
+    if sources.empty:
+        return _empty_results()
+
+    issue_rows = []
+    context_rows = []
+    if "SourceTable" in sources.columns:
+        source_groups = (
+            group.copy()
+            for _, group in sources.groupby("SourceTable", dropna=False, sort=False)
+        )
+    else:
+        source_groups = [sources]
+
+    for source_group in source_groups:
+        group_issue_rows, group_context_rows = _check_source_group(source_group)
+        issue_rows.extend(group_issue_rows)
+        context_rows.extend(group_context_rows)
 
     source_voltage_issues = add_rule_columns(
         pd.DataFrame(issue_rows),
@@ -216,6 +243,9 @@ def check_source_voltage(sources: pd.DataFrame | None) -> dict[str, pd.DataFrame
     print("========================")
     print("Source voltage rows checked:", len(sources))
     print("VR3 source voltage mismatch:", len(source_voltage_issues))
+    if context_rows:
+        context = pd.DataFrame(context_rows)
+        print("VR3 rows not run:", int(context["RuleExecutionStatus"].eq("NOT_RUN").sum()))
 
     return {
         "source_voltage_issues": source_voltage_issues,

@@ -39,6 +39,14 @@ PHASE_POWER_COLUMN_GROUPS = {
 }
 
 
+def numeric_sum(dataframe: pd.DataFrame, columns: list[str]) -> pd.Series:
+    if not columns:
+        return pd.Series(0.0, index=dataframe.index)
+
+    numeric_values = dataframe[columns].apply(pd.to_numeric, errors="coerce").fillna(0)
+    return numeric_values.sum(axis=1)
+
+
 def find_phase_power_column_groups(loads: pd.DataFrame) -> dict[str, list[str]]:
     return {
         unit: columns

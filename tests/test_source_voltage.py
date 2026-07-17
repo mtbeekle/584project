@@ -59,3 +59,31 @@ def test_source_voltage_missing_expected_voltage_is_diagnostic_only():
     assert results["source_voltage_context"].iloc[0]["VR3VoltageStatus"] == (
         "Cannot run VR3: expected feeder/system voltage is missing, zero, or unreadable"
     )
+    assert results["source_voltage_context"].iloc[0]["RuleExecutionStatus"] == "NOT_RUN"
+
+
+def test_source_voltage_adapts_each_source_table_independently():
+    sources = pd.DataFrame(
+        [
+            {
+                "SourceTable": "InstFeeders",
+                "FeederId": "F1",
+                "NominalKvll": 12.47,
+                "BusVoltageLevel": 12.47,
+            },
+            {
+                "SourceTable": "Sources",
+                "SourceId": "SRC2",
+                "SourceNominalKv": 4.16,
+                "FeederVoltage": 12.47,
+            },
+        ]
+    )
+
+    results = check_source_voltage(sources)
+
+    assert len(results["source_voltage_issues"]) == 1
+    issue = results["source_voltage_issues"].iloc[0]
+    assert issue["ElementID"] == "SRC2"
+    assert issue["SourceVoltageColumnUsed"] == "SourceNominalKv"
+    assert issue["ExpectedVoltageColumnUsed"] == "FeederVoltage"

@@ -72,6 +72,16 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_OUTPUT_FILE,
         help="Path for the Excel validation report. Default: data/exports/synergi_validation_results.xlsx",
     )
+    parser.add_argument(
+        "--feeder-topology-file",
+        type=Path,
+        default=None,
+        help=(
+            "Optional CSV/XLSX with FeederId and topology columns. "
+            "Use RADIAL for feeders where closed cycles should be errors, "
+            "MESHED for approved meshed feeders, or UNKNOWN for review-only."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -206,6 +216,24 @@ def load_source_tables(connection, table_names: list[str]):
     return pd.concat(frames, ignore_index=True, sort=False), source_table_names
 
 
+def load_feeder_topology_config(path: Path | None) -> pd.DataFrame | None:
+    if path is None:
+        return None
+
+    if not path.exists():
+        raise FileNotFoundError(f"Feeder topology file not found: {path}")
+
+    suffix = path.suffix.lower()
+    if suffix == ".csv":
+        return pd.read_csv(path)
+    if suffix in {".xlsx", ".xls"}:
+        return pd.read_excel(path)
+
+    raise ValueError(
+        "Unsupported feeder topology file type. Use .csv, .xlsx, or .xls."
+    )
+
+
 def get_tool_version() -> str | None:
     try:
         result = subprocess.run(
@@ -226,6 +254,7 @@ def main() -> None:
     args = parse_args()
     mdb_file = args.mdb_file if args.mdb_file else find_default_mdb_file()
     output_file = args.output_file
+    feeder_topology = load_feeder_topology_config(args.feeder_topology_file)
 
     if not mdb_file.is_absolute():
         mdb_file = PROJECT_DIR / mdb_file
@@ -348,7 +377,11 @@ def main() -> None:
             sections,
         )
 
-        loop_results = check_loops(sections)
+        loop_results = check_loops(
+            sections,
+            device_statuses=fuses,
+            feeder_topology=feeder_topology,
+        )
         unfed_topology_results = check_unfed_sections(sections)
         topology_results = {
             **loop_results,

@@ -145,61 +145,8 @@ RAW_SECTION_VOLTAGE_COL = _raw_context_column_name("InstSectionVoltage")
 
 
 def _parse_regulator_phase_set(value) -> set[str]:
-    """Parse regulator/section phase values for Synergi-style data.
-
-    Synergi exports can store phases either as text (A, AB, ABC, Phase C)
-    or as a numeric bit mask: 1=A, 2=B, 4=C, 3=AB, 5=AC, 6=BC, 7=ABC.
-    The older generic parser did not understand 4=C, which allowed a Phase C
-    regulator on an AB line to be missed.
-    """
-    if value is None:
-        return set()
-
-    try:
-        if pd.isna(value):
-            return set()
-    except Exception:
-        pass
-
-    text = str(value).strip().upper()
-    if not text:
-        return set()
-
-    compact = (
-        text.replace(" ", "")
-        .replace(",", "")
-        .replace(";", "")
-        .replace("-", "")
-        .replace("_", "")
-    )
-
-    # Numeric-only Synergi phase masks. This is the important fix for C=4.
-    if compact.isdigit():
-        try:
-            mask = int(compact)
-        except Exception:
-            mask = None
-        if mask is not None and 0 <= mask <= 7:
-            phases = set()
-            if mask & 1:
-                phases.add("A")
-            if mask & 2:
-                phases.add("B")
-            if mask & 4:
-                phases.add("C")
-            return phases
-
-    # Text values such as A, AB, ABC, Phase C, phases=A/B/C.
-    text_without_words = compact.replace("PHASES", "").replace("PHASE", "")
-    phases = {char for char in text_without_words if char in {"A", "B", "C"}}
-    if phases:
-        return phases
-
-    # Last-resort support for labels like Phase1, Phase2, Phase3 where the
-    # number is a phase number, not a bit mask. Numeric-only values are handled
-    # above as masks because that is how Synergi connected phases are commonly stored.
-    phase_number_map = {"1": "A", "2": "B", "3": "C"}
-    return {phase_number_map[char] for char in text_without_words if char in phase_number_map}
+    """Use the shared Synergi A/B/C parser for regulator and section phases."""
+    return parse_phase_set(value)
 
 
 def _same_node(left: object, right: object) -> bool:

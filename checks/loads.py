@@ -6,6 +6,7 @@ from checks.load_power import (
     checked_power_columns,
     find_phase_power_column_groups,
     find_total_kva_columns,
+    numeric_sum,
 )
 
 
@@ -25,11 +26,7 @@ def check_connected_kva(loads: pd.DataFrame, sections: pd.DataFrame) -> dict:
     )
 
     phase_power_column_groups = find_phase_power_column_groups(loads)
-    total_kva_columns = (
-        []
-        if phase_power_column_groups
-        else find_total_kva_columns(loads)
-    )
+    total_kva_columns = find_total_kva_columns(loads)
 
     if not phase_power_column_groups and not total_kva_columns:
         raise ValueError(
@@ -39,47 +36,40 @@ def check_connected_kva(loads: pd.DataFrame, sections: pd.DataFrame) -> dict:
 
     load_values = loads.copy()
     load_total_columns = []
-    section_total_columns = []
-    issue_basis_columns = []
+    load_values["TotalConnectedKVAForCheck"] = 0.0
+    load_basis_parts = []
 
-    for unit, columns in phase_power_column_groups.items():
-        for column in columns:
-            load_values[column] = pd.to_numeric(
-                load_values[column],
-                errors="coerce"
-            ).fillna(0)
-
-        total_column = f"TotalConnected{unit}"
-        load_values[total_column] = load_values[columns].sum(axis=1)
-        load_total_columns.append(total_column)
-
-        section_total_column = f"Section{total_column}"
-        load_values[section_total_column] = (
-            load_values.groupby("SectionId")[total_column].transform("sum")
-        )
-        section_total_columns.append(section_total_column)
-        if unit == "KVA":
-            issue_basis_columns.append(section_total_column)
-
-    if total_kva_columns:
-        for column in total_kva_columns:
-            load_values[column] = pd.to_numeric(
-                load_values[column],
-                errors="coerce"
-            ).fillna(0)
-
-        load_values["TotalConnectedKVA"] = load_values[total_kva_columns].sum(axis=1)
+    if "KVA" in phase_power_column_groups:
+        load_values["TotalConnectedKVA"] = numeric_sum(load_values, phase_power_column_groups["KVA"])
+        load_values["TotalConnectedKVAForCheck"] = load_values["TotalConnectedKVA"]
         load_total_columns.append("TotalConnectedKVA")
+        load_basis_parts.append("phase KVA")
+    elif total_kva_columns:
+        load_values["TotalConnectedKVA"] = numeric_sum(load_values, total_kva_columns)
+        load_values["TotalConnectedKVAForCheck"] = load_values["TotalConnectedKVA"]
+        load_total_columns.append("TotalConnectedKVA")
+        load_basis_parts.append("total KVA")
+    elif "KW" in phase_power_column_groups and "KVAR" in phase_power_column_groups:
+        load_values["TotalConnectedKW"] = numeric_sum(load_values, phase_power_column_groups["KW"])
+        load_values["TotalConnectedKVAR"] = numeric_sum(load_values, phase_power_column_groups["KVAR"])
+        load_values["TotalConnectedKVAForCheck"] = (
+            load_values["TotalConnectedKW"].pow(2)
+            + load_values["TotalConnectedKVAR"].pow(2)
+        ).pow(0.5)
+        load_total_columns.extend(["TotalConnectedKW", "TotalConnectedKVAR"])
+        load_basis_parts.append("sqrt(KW^2 + KVAR^2)")
+    elif "KW" in phase_power_column_groups:
+        load_values["TotalConnectedKW"] = numeric_sum(load_values, phase_power_column_groups["KW"])
+        load_values["TotalConnectedKVAForCheck"] = load_values["TotalConnectedKW"].abs()
+        load_total_columns.append("TotalConnectedKW")
+        load_basis_parts.append("absolute KW proxy")
+    elif "KVAR" in phase_power_column_groups:
+        load_values["TotalConnectedKVAR"] = numeric_sum(load_values, phase_power_column_groups["KVAR"])
+        load_values["TotalConnectedKVAForCheck"] = load_values["TotalConnectedKVAR"].abs()
+        load_total_columns.append("TotalConnectedKVAR")
+        load_basis_parts.append("absolute KVAR proxy")
 
-        section_total_column = "SectionTotalConnectedKVA"
-        load_values[section_total_column] = (
-            load_values.groupby("SectionId")["TotalConnectedKVA"].transform("sum")
-        )
-        section_total_columns.append(section_total_column)
-        issue_basis_columns.append(section_total_column)
-
-    if not issue_basis_columns:
-        issue_basis_columns = section_total_columns
+    load_total_columns.append("TotalConnectedKVAForCheck")
 
     section_load_summary = (
         load_values
@@ -88,14 +78,31 @@ def check_connected_kva(loads: pd.DataFrame, sections: pd.DataFrame) -> dict:
             LoadRecordCount=("SectionId", "size"),
             **{
                 column: (column, "first")
-                for column in section_total_columns
+                for column in load_total_columns
             }
         )
     )
+    section_load_summary = section_load_summary.rename(
+        columns={
+            column: f"Section{column}"
+            for column in load_total_columns
+        }
+    )
+
+    section_load_summary = sections[["SectionId"]].drop_duplicates().merge(
+        section_load_summary,
+        on="SectionId",
+        how="left",
+    )
+    section_load_summary["LoadRecordCount"] = section_load_summary["LoadRecordCount"].fillna(0).astype(int)
+    for column in section_load_summary.columns:
+        if column.startswith("SectionTotalConnected"):
+            section_load_summary[column] = section_load_summary[column].fillna(0)
+    section_load_summary["ConnectedLoadBasis"] = ", ".join(load_basis_parts)
 
     no_connected_kva = add_rule_columns(
         section_load_summary[
-            (section_load_summary[issue_basis_columns] <= 0).all(axis=1)
+            section_load_summary["SectionTotalConnectedKVAForCheck"] <= 0
         ],
         rule=get_rule("VR10"),
         element_type="Section",
@@ -109,7 +116,7 @@ def check_connected_kva(loads: pd.DataFrame, sections: pd.DataFrame) -> dict:
     print("========================")
     print(f"Phase power column groups used: {phase_power_column_groups}")
     print(f"Total kVA columns used: {total_kva_columns}")
-    print(f"Issue basis columns used: {issue_basis_columns}")
-    print(f"Sections with load records but no connected load: {len(no_connected_kva)}")
+    print(f"Connected load basis used: {', '.join(load_basis_parts)}")
+    print(f"Sections with no connected load: {len(no_connected_kva)}")
 
     return results

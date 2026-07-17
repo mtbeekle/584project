@@ -84,6 +84,12 @@ def is_false_series(series: pd.Series) -> pd.Series:
 
 
 def parse_phase_set(value) -> set[str]:
+    """Parse Synergi phase designations into A/B/C.
+
+    Numeric-only Synergi values are treated as bitmasks:
+    1=A, 2=B, 4=C, 3=AB, 5=AC, 6=BC, 7=ABC.
+    Text values such as A, AB, Phase C, and Phase 1 are also accepted.
+    """
     if value is None:
         return set()
 
@@ -93,23 +99,37 @@ def parse_phase_set(value) -> set[str]:
     except Exception:
         pass
 
-    normalized = str(value).upper()
-    replacements = [
-        ("PHASES", ""),
-        ("PHASE", ""),
-        (" ", ""),
-        (",", ""),
-        (";", ""),
-        ("-", ""),
-        ("_", ""),
-        ("1", "A"),
-        ("2", "B"),
-        ("3", "C"),
-    ]
-    for original, replacement in replacements:
-        normalized = normalized.replace(original, replacement)
+    normalized = str(value).strip().upper()
+    if not normalized:
+        return set()
 
-    return {char for char in normalized if char in {"A", "B", "C"}}
+    compact = (
+        normalized.replace(" ", "")
+        .replace(",", "")
+        .replace(";", "")
+        .replace("-", "")
+        .replace("_", "")
+    )
+
+    if compact.isdigit():
+        mask = int(compact)
+        if 0 <= mask <= 7:
+            phases = set()
+            if mask & 1:
+                phases.add("A")
+            if mask & 2:
+                phases.add("B")
+            if mask & 4:
+                phases.add("C")
+            return phases
+
+    text_without_words = compact.replace("PHASES", "").replace("PHASE", "")
+    phases = {char for char in text_without_words if char in {"A", "B", "C"}}
+    if phases:
+        return phases
+
+    phase_number_map = {"1": "A", "2": "B", "3": "C"}
+    return {phase_number_map[char] for char in text_without_words if char in phase_number_map}
 
 
 def add_issue_columns(

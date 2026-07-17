@@ -75,7 +75,9 @@ If the current implementation assumes all sections are active, results should be
 
 Implemented in `checks/source_voltage.py`.
 
-The current implementation discovers source-like tables, with `InstFeeders` as the primary Synergi source table in the sample MDB. It compares a source nominal voltage such as `NominalKvll` against an expected feeder/system voltage such as `BusVoltageLevel`, or the maximum available by-phase voltage level. Rows without enough comparable voltage evidence are written to the `SourceVoltageContext` diagnostic sheet instead of being reported as issues.
+The current implementation discovers source-like tables, with `InstFeeders` as the primary Synergi source table in the sample MDB. Each source table is adapted independently so heterogeneous optional tables do not share one global column mapping. The check compares a source nominal voltage such as `NominalKvll` against an expected feeder/system voltage such as `BusVoltageLevel`, or the maximum available by-phase voltage level.
+
+Rows without enough comparable voltage evidence are written to the `SourceVoltageContext` diagnostic sheet with `RuleExecutionStatus = NOT_RUN` instead of being reported as source-voltage defects. A sponsor-approved feeder/system voltage baseline is still preferred for production acceptance.
 
 The voltage mismatch tolerance is currently 10 percent and should be confirmed with the sponsor before finalizing the rule.
 
