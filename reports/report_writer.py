@@ -171,7 +171,14 @@ def build_issue_tables(
         "DuplicateSections": missing_results["duplicate_sections"],
         "CapacitorIssues": capacitor_results["capacitor_issues"],
         "OpenFuses": fuse_results["open_fuses"],
-        "LoopSections": topology_results["loop_sections"],
+        "LoopSummary": topology_results.get(
+            "loop_summary",
+            topology_results.get("loop_sections", pd.DataFrame()),
+        ),
+        "LoopReviewSummary": topology_results.get(
+            "loop_review_summary",
+            pd.DataFrame(),
+        ),
         "DisconnectedTopology": topology_results["unfed_sections"],
         "ConductorHeight": height_results["conductor_height_issues"],
         "NoConnectedKVA": load_results["no_connected_kva"],
@@ -220,6 +227,38 @@ def build_diagnostic_tables(
         ),
         "TopologyComponents": topology_results.get(
             "topology_components",
+            pd.DataFrame(),
+        ),
+        "LoopSectionDetails": topology_results.get(
+            "loop_section_details",
+            pd.DataFrame(),
+        ),
+        "LoopReviewSectionDetails": topology_results.get(
+            "loop_review_section_details",
+            pd.DataFrame(),
+        ),
+        "LoopSections": topology_results.get(
+            "loop_sections",
+            pd.DataFrame(),
+        ),
+        "LoopDiagnostics": topology_results.get(
+            "loop_diagnostics",
+            pd.DataFrame(),
+        ),
+        "PhysicalCycleDiagnostics": topology_results.get(
+            "physical_cycle_diagnostics",
+            pd.DataFrame(),
+        ),
+        "TopologySelfLoops": topology_results.get(
+            "topology_self_loops",
+            pd.DataFrame(),
+        ),
+        "TopologyDuplicateSectionIds": topology_results.get(
+            "topology_duplicate_section_ids",
+            pd.DataFrame(),
+        ),
+        "TopologyParallelSections": topology_results.get(
+            "topology_parallel_sections",
             pd.DataFrame(),
         ),
     }

@@ -255,6 +255,22 @@ def main() -> None:
             "Potential loop/meshed topology review sections:",
             len(loop_results["loop_sections"])
         )
+        print(
+            "Topology cycle summary records:",
+            len(loop_results["loop_summary"])
+        )
+        print(
+            "Topology cycle review records:",
+            len(loop_results["loop_review_summary"])
+        )
+        print(
+            "Physical cycle diagnostic records:",
+            len(loop_results["physical_cycle_diagnostics"])
+        )
+        if not loop_results["loop_diagnostics"].empty:
+            print("\nLoop diagnostics:")
+            for _, row in loop_results["loop_diagnostics"].iterrows():
+                print(f"  {row['Check']}: {row['Count']}")
 
         print(
             "Isolated topology component review sections:",
