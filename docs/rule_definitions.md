@@ -233,9 +233,9 @@ For example, an overhead conductor may be expected to have a positive height abo
 
 **Implementation Notes:**
 
-This rule identifies three-phase sections with missing or unknown conductor assignments. The implementation checks `UseEquivSpacing` to decide whether the section should use the single equivalent-spacing conductor field or all per-phase conductor fields.
+This rule identifies sections marked as using non-identical phase conductors where active phase conductor IDs differ, or where an active phase conductor ID is missing so the different-conductor condition cannot be verified.
 
-Equivalent-spacing sections require `PhaseConductorId`. Non-equivalent-spacing sections require `PhaseConductorId`, `PhaseConductor2Id`, and `PhaseConductor3Id`. Acceptable exceptions should be documented if the sponsor identifies valid cases.
+The implementation uses `IdenticalPhaseConductors` as the controlling Synergi field. When `IdenticalPhaseConductors` is true, `PhaseConductor2Id` and `PhaseConductor3Id` may be `Unknown` without indicating a mismatch; for example, this is how `Ghm_00036` is represented in the sample MDB.
 
 ## VR13 - Fewer Upstream Phases
 
