@@ -155,6 +155,7 @@ def write_summary_sheet(
 def build_report_tables(
     missing_results: dict[str, pd.DataFrame],
     capacitor_results: dict[str, pd.DataFrame],
+    regulator_results: dict[str, pd.DataFrame],
     fuse_results: dict[str, pd.DataFrame],
     height_results: dict[str, pd.DataFrame],
     load_results: dict[str, pd.DataFrame],
@@ -170,6 +171,7 @@ def build_report_tables(
         "MissingConductor": missing_results["missing_conductor"],
         "DuplicateSections": missing_results["duplicate_sections"],
         "CapacitorIssues": capacitor_results["capacitor_issues"],
+        "RegulatorIssues": regulator_results["regulator_issues"],
         "OpenFuses": fuse_results["open_fuses"],
         "UnfedSections": fuse_results["unfed_sections"],
         #"LoopSections": topology_results["loop_sections"],
@@ -186,6 +188,7 @@ def write_validation_report(
     mdb_file: Path,
     missing_results: dict[str, pd.DataFrame],
     capacitor_results: dict[str, pd.DataFrame],
+    regulator_results: dict[str, pd.DataFrame],
     fuse_results: dict[str, pd.DataFrame],
     height_results: dict[str, pd.DataFrame],
     load_results: dict[str, pd.DataFrame],
@@ -199,6 +202,7 @@ def write_validation_report(
     report_tables = build_report_tables(
         missing_results,
         capacitor_results,
+        regulator_results,
         fuse_results,
         height_results,
         load_results,
@@ -221,5 +225,16 @@ def write_validation_report(
         format_report_sheet(writer.sheets["Issues"])
 
         for sheet_name, dataframe in report_tables.items():
+            dataframe.to_excel(writer, sheet_name=sheet_name, index=False)
+            format_report_sheet(writer.sheets[sheet_name])
+
+        diagnostic_tables = {
+            "TransformerDiscovery": capacitor_results.get("transformer_locations"),
+            "CapVoltageContext": capacitor_results.get("capacitor_voltage_context"),
+            "RegulatorContext": regulator_results.get("regulator_context"),
+        }
+        for sheet_name, dataframe in diagnostic_tables.items():
+            if dataframe is None:
+                continue
             dataframe.to_excel(writer, sheet_name=sheet_name, index=False)
             format_report_sheet(writer.sheets[sheet_name])

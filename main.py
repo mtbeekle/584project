@@ -4,6 +4,7 @@ import subprocess
 
 from checks.missingdata import check_missing_data
 from checks.capacitors import check_capacitors
+from checks.regulators import check_regulators
 from checks.fuses import check_open_fuses
 from checks.conductorheight import check_conductor_height
 from checks.customercount import check_customer_count
@@ -49,6 +50,115 @@ def load_table(connection, table_name: str):
         raise RuntimeError(f"Could not load required table [{table_name}]") from exc
 
 
+TRANSFORMER_TABLE_CANDIDATES = [
+    "InstDTrans",
+    "InstPrimaryTransformers",
+    "InstSubstationTransformers",
+    "InstTranLine",
+    "InstTranVertices",
+]
+
+
+def find_transformer_table_names(table_names: list[str]) -> list[str]:
+    lookup = {name.strip().lower(): name for name in table_names}
+    matches: list[str] = []
+
+    for candidate in TRANSFORMER_TABLE_CANDIDATES:
+        match = lookup.get(candidate.lower())
+        if match and match not in matches:
+            matches.append(match)
+
+    for table_name in table_names:
+        normalized = table_name.lower()
+        if (
+            "transformer" in normalized
+            or "xfmr" in normalized
+            or "dtrans" in normalized
+        ):
+            if table_name not in matches:
+                matches.append(table_name)
+
+    return matches
+
+
+def load_transformer_tables(connection, table_names: list[str]):
+    import pandas as pd
+
+    transformer_table_names = find_transformer_table_names(table_names)
+    frames = []
+
+    for table_name in transformer_table_names:
+        try:
+            table = read_table(connection, table_name)
+        except Exception as exc:
+            print(f"Warning: found optional transformer table [{table_name}] but could not load it: {exc}")
+            continue
+
+        table = table.copy()
+        table.insert(0, "TransformerSourceTable", table_name)
+        frames.append(table)
+        print(f"Transformer table loaded: {table_name} ({len(table)} rows)")
+
+    if not frames:
+        return None, transformer_table_names
+
+    return pd.concat(frames, ignore_index=True, sort=False), transformer_table_names
+
+
+REGULATOR_TABLE_CANDIDATES = [
+    "InstRegulators",
+    "InstRegulator",
+    "InstVoltageRegulators",
+    "InstVoltageRegulator",
+    "VoltageRegulators",
+    "VoltageRegulator",
+    "Regulators",
+    "Regulator",
+]
+
+
+def find_regulator_table_names(table_names: list[str]) -> list[str]:
+    lookup = {name.strip().lower(): name for name in table_names}
+    matches: list[str] = []
+
+    for candidate in REGULATOR_TABLE_CANDIDATES:
+        match = lookup.get(candidate.lower())
+        if match and match not in matches:
+            matches.append(match)
+
+    for table_name in table_names:
+        normalized = table_name.lower()
+        if "regulator" in normalized or "voltagereg" in normalized:
+            if table_name not in matches:
+                matches.append(table_name)
+
+    return matches
+
+
+def load_regulator_tables(connection, table_names: list[str]):
+    import pandas as pd
+
+    regulator_table_names = find_regulator_table_names(table_names)
+    frames = []
+
+    for table_name in regulator_table_names:
+        try:
+            table = read_table(connection, table_name)
+        except Exception as exc:
+            print(f"Warning: found optional regulator table [{table_name}] but could not load it: {exc}")
+            continue
+
+        table = table.copy()
+        table.insert(0, "RegulatorSourceTable", table_name)
+        frames.append(table)
+        print(f"Regulator table loaded: {table_name} ({len(table)} rows)")
+
+    if not frames:
+        return None, regulator_table_names
+
+    return pd.concat(frames, ignore_index=True, sort=False), regulator_table_names
+
+
 def get_tool_version() -> str | None:
     try:
         result = subprocess.run(
@@ -92,7 +202,8 @@ def main() -> None:
         print("TABLES IN MDB")
         print("========================\n")
 
-        for table_name in list_user_tables(conn):
+        user_tables = list(list_user_tables(conn))
+        for table_name in user_tables:
             print(table_name)
 
         # =====================================================
@@ -108,12 +219,29 @@ def main() -> None:
         loads = load_table(conn, "Loads")
         capacitors = load_table(conn, "InstCapacitors")
         fuses = load_table(conn, "InstFuses")
+        transformers, transformer_table_names = load_transformer_tables(conn, user_tables)
+        regulators, regulator_table_names = load_regulator_tables(conn, user_tables)
 
         print(f"Nodes Loaded: {len(nodes)}")
         print(f"Sections Loaded: {len(sections)}")
         print(f"Loads Loaded: {len(loads)}")
         print(f"Capacitors Loaded: {len(capacitors)}")
         print(f"Fuses Loaded: {len(fuses)}")
+        if transformers is None:
+            print("Transformers Loaded: 0 - no transformer table found")
+            if transformer_table_names:
+                print("Transformer-like tables were found but none could be loaded:", transformer_table_names)
+        else:
+            print(f"Transformer tables detected: {transformer_table_names}")
+            print(f"Transformer rows loaded total: {len(transformers)}")
+
+        if regulators is None:
+            print("Regulators Loaded: 0 - no regulator table found")
+            if regulator_table_names:
+                print("Regulator-like tables were found but none could be loaded:", regulator_table_names)
+        else:
+            print(f"Regulator tables detected: {regulator_table_names}")
+            print(f"Regulator rows loaded total: {len(regulators)}")
 
         # =====================================================
         # DISPLAY COLUMNS
@@ -137,7 +265,16 @@ def main() -> None:
 
         capacitor_results = check_capacitors(
             capacitors,
-            sections
+            sections,
+            transformers=transformers,
+            nodes=nodes,
+        )
+
+        regulator_results = check_regulators(
+            regulators,
+            sections,
+            transformers=transformers,
+            nodes=nodes,
         )
 
         fuse_results = check_open_fuses(
@@ -207,6 +344,11 @@ def main() -> None:
         )
 
         print(
+            "Regulator issues:",
+            len(regulator_results['regulator_issues'])
+        )
+
+        print(
             "Open fuses:",
             len(fuse_results['open_fuses'])
         )
@@ -251,6 +393,7 @@ def main() -> None:
             mdb_file,
             missing_results,
             capacitor_results,
+            regulator_results,
             fuse_results,
             height_results,
             load_results,
