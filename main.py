@@ -7,6 +7,7 @@ import pandas as pd
 from checks.missingdata import check_missing_data
 from checks.capacitors import check_capacitors
 from checks.regulators import check_regulators
+from checks.source_voltage import check_source_voltage
 from checks.fuses import check_open_fuses
 from checks.conductorheight import check_conductor_height
 from checks.customercount import check_customer_count
@@ -40,6 +41,15 @@ REGULATOR_TABLE_CANDIDATES = [
     "VoltageRegulator",
     "Regulators",
     "Regulator",
+]
+
+SOURCE_TABLE_CANDIDATES = [
+    "InstFeeders",
+    "Feeders",
+    "Sources",
+    "InstSources",
+    "Source",
+    "InstSource",
 ]
 
 
@@ -156,6 +166,46 @@ def load_regulator_tables(connection, table_names: list[str]):
     return pd.concat(frames, ignore_index=True, sort=False), regulator_table_names
 
 
+def find_source_table_names(table_names: list[str]) -> list[str]:
+    lookup = {name.strip().lower(): name for name in table_names}
+    matches: list[str] = []
+
+    for candidate in SOURCE_TABLE_CANDIDATES:
+        match = lookup.get(candidate.lower())
+        if match and match not in matches:
+            matches.append(match)
+
+    for table_name in table_names:
+        normalized = table_name.lower()
+        if "source" in normalized or normalized == "instfeeders":
+            if table_name not in matches:
+                matches.append(table_name)
+
+    return matches
+
+
+def load_source_tables(connection, table_names: list[str]):
+    source_table_names = find_source_table_names(table_names)
+    frames = []
+
+    for table_name in source_table_names:
+        try:
+            table = read_table(connection, table_name)
+        except Exception as exc:
+            print(f"Warning: found optional source table [{table_name}] but could not load it: {exc}")
+            continue
+
+        table = table.copy()
+        table.insert(0, "SourceTable", table_name)
+        frames.append(table)
+        print(f"Source table loaded: {table_name} ({len(table)} rows)")
+
+    if not frames:
+        return None, source_table_names
+
+    return pd.concat(frames, ignore_index=True, sort=False), source_table_names
+
+
 def get_tool_version() -> str | None:
     try:
         result = subprocess.run(
@@ -210,6 +260,7 @@ def main() -> None:
         fuses = load_table(conn, "InstFuses")
         transformers, transformer_table_names = load_transformer_tables(conn, user_tables)
         regulators, regulator_table_names = load_regulator_tables(conn, user_tables)
+        sources, source_table_names = load_source_tables(conn, user_tables)
 
         print(f"Nodes Loaded: {len(nodes)}")
         print(f"Sections Loaded: {len(sections)}")
@@ -232,6 +283,14 @@ def main() -> None:
         else:
             print(f"Regulator tables detected: {regulator_table_names}")
             print(f"Regulator rows loaded total: {len(regulators)}")
+
+        if sources is None:
+            print("Sources Loaded: 0 - no source/feeder table found")
+            if source_table_names:
+                print("Source-like tables were found but none could be loaded:", source_table_names)
+        else:
+            print(f"Source tables detected: {source_table_names}")
+            print(f"Source rows loaded total: {len(sources)}")
 
         print("\n========================")
         print("NODE COLUMNS")
@@ -257,6 +316,10 @@ def main() -> None:
             sections,
             transformers=transformers,
             nodes=nodes,
+        )
+
+        source_voltage_results = check_source_voltage(
+            sources,
         )
 
         fuse_results = check_open_fuses(
@@ -303,6 +366,7 @@ def main() -> None:
         print("Duplicate Section IDs:", len(missing_results["duplicate_sections"]))
         print("Capacitor issues:", len(capacitor_results["capacitor_issues"]))
         print("Regulator issues:", len(regulator_results["regulator_issues"]))
+        print("Source voltage issues:", len(source_voltage_results["source_voltage_issues"]))
         print("Open fuses:", len(fuse_results["open_fuses"]))
         print("Conductor height issues:", len(height_results["conductor_height_issues"]))
         print("Potential loop/meshed topology review sections:", len(loop_results["loop_sections"]))
@@ -327,6 +391,7 @@ def main() -> None:
             missing_results,
             capacitor_results,
             regulator_results,
+            source_voltage_results,
             fuse_results,
             height_results,
             load_results,

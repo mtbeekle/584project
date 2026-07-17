@@ -73,9 +73,11 @@ If the current implementation assumes all sections are active, results should be
 
 **Implementation Notes:**
 
-This rule requires a reliable expected voltage reference. The expected voltage may come from feeder metadata, source metadata, section ratings, connected device ratings, or sponsor-provided values.
+Implemented in `checks/source_voltage.py`.
 
-Voltage tolerance should be confirmed with the sponsor before finalizing the rule.
+The current implementation discovers source-like tables, with `InstFeeders` as the primary Synergi source table in the sample MDB. It compares a source nominal voltage such as `NominalKvll` against an expected feeder/system voltage such as `BusVoltageLevel`, or the maximum available by-phase voltage level. Rows without enough comparable voltage evidence are written to the `SourceVoltageContext` diagnostic sheet instead of being reported as issues.
+
+The voltage mismatch tolerance is currently 10 percent and should be confirmed with the sponsor before finalizing the rule.
 
 ## VR4 - Open Fuse
 
