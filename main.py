@@ -374,6 +374,8 @@ def main() -> None:
         print(sections.columns.tolist())
 
         missing_results = check_missing_data(sections)
+        # Capacitor validation returns VR6/VR7 issue rows plus voltage/transformer
+        # diagnostic context used by the Excel report.
 
         capacitor_results = check_capacitors(
             capacitors,
@@ -381,6 +383,8 @@ def main() -> None:
             transformers=transformers,
             nodes=nodes,
         )
+        # Regulator validation returns VR8/VR9 issue rows plus a complete audit
+        # context showing the selected section, transformer, and voltage evidence.
 
         regulator_results = check_regulators(
             regulators,

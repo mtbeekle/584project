@@ -171,6 +171,10 @@ def build_issue_tables(
         "MissingPhase": missing_results["missing_phase"],
         "MissingConductor": missing_results["missing_conductor"],
         "DuplicateSections": missing_results["duplicate_sections"],
+
+        # VR6/VR7 share CapacitorIssues and VR8/VR9 share RegulatorIssues.
+        # Use the RuleID column in Excel to identify the specific validation rule.
+
         "CapacitorIssues": capacitor_results["capacitor_issues"],
         "RegulatorIssues": regulator_results["regulator_issues"],
         "SourceVoltageIssues": source_voltage_results["source_voltage_issues"],
@@ -226,6 +230,9 @@ def build_diagnostic_tables(
     source_voltage_results: dict[str, pd.DataFrame],
     topology_results: dict[str, pd.DataFrame],
 ) -> dict[str, pd.DataFrame]:
+    # Diagnostic sheets include passes and non-runnable checks, not just failures.
+    # They show which source columns and topology evidence were used for VR6-VR9.
+
     return {
         "CapVoltageContext": capacitor_results.get(
             "capacitor_voltage_context",

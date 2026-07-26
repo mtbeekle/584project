@@ -12,6 +12,16 @@ from validation_utils import (
 )
 
 
+    # VR6 / VR7 QUICK MAP
+    # - VR6 checks that each capacitor's RatedKv matches the voltage at its location.
+    #   The expected voltage can come from InstSection.ConfigurationId, a nearby
+    #   transformer side, or a direct InstSection voltage field.
+    # - VR7 checks that capacitor phases are a subset of the connected section phases.
+    #   A one- or two-phase capacitor on a three-phase section is valid; a capacitor
+    #   using a phase that is absent from the section is flagged.
+    # Helper functions below handle MDB column-name variations and topology context so
+    # the main check near the bottom of this file stays readable.
+
 # A voltage-class mismatch such as 4.16 kV connected to 12.47 kV is a major issue.
 # Keep this tolerance configurable after sponsor review.
 VR6_VOLTAGE_TOLERANCE_PCT = 10.0
@@ -941,12 +951,16 @@ def check_capacitors(capacitors, sections, transformers=None, nodes=None):
             ].head(1).to_dict("records")
         )
 
+    # Join each capacitor to its connected InstSection once. The merged rows are
+    # then reused by both VR7 (phase comparison) and VR6 (voltage comparison).
     capacitor_phase_check = capacitors.merge(
         sections,
         on="SectionId",
         how="left",
         suffixes=("", "_Section"),
     )
+
+
 
     section_voltage_source_column = _find_col(sections, SECTION_VOLTAGE_COLUMNS)
     section_voltage_column = (
@@ -978,6 +992,10 @@ def check_capacitors(capacitors, sections, transformers=None, nodes=None):
     # ==================================================
 
     phase_mismatch_rows = []
+
+    # Valid example: capacitor AB on section ABC. Invalid example: capacitor C
+    # on section AB. The subset test implements this rule without hard-coding
+    # every possible phase combination.
 
     for _, row in capacitor_phase_check.iterrows():
         cap_phases = parse_phase_set(row["ConnectedPhases"])
@@ -1027,6 +1045,10 @@ def check_capacitors(capacitors, sections, transformers=None, nodes=None):
 
     capacitor_missing_rated_kv_rows = []
 
+    # Missing/zero RatedKv cannot be evaluated as a true voltage mismatch. Keep
+    # it under VR6, but classify it for engineering review instead of calculating
+    # a percentage difference from an invalid value.
+
     if rated_kv_column:
         for _, row in capacitors.iterrows():
             rated_kv_numeric = _num(row[rated_kv_column])
@@ -1065,9 +1087,11 @@ def check_capacitors(capacitors, sections, transformers=None, nodes=None):
     capacitor_voltage_issue_rows = []
     capacitor_voltage_context_rows = []
 
-    # Build this diagnostic for every capacitor, even when no VR6 mismatch exists.
-    # This is the tab reviewers use to confirm whether VR6 compared the capacitor
-    # RatedKv against the connected section voltage or a transformer-side voltage.
+    # Build one diagnostic row for every capacitor, including passes and cases
+    # that could not be evaluated. Only actual mismatches are copied into the
+    # issue table. This separation makes the Excel output auditable without
+    # treating missing context as a confirmed error.
+
     for _, row in capacitor_phase_check.iterrows():
         capacitor_kv = _voltage_kv(row[rated_kv_column]) if rated_kv_column else np.nan
         voltage_context = _expected_voltage_for_vr6(
@@ -1095,6 +1119,9 @@ def check_capacitors(capacitors, sections, transformers=None, nodes=None):
         elif pd.isna(expected_kv) or expected_kv <= 0:
             diagnostic_status = "Cannot run VR6: expected voltage is missing or zero"
         else:
+            # Compare relative to the expected line voltage so the same tolerance
+            # can be applied consistently across different voltage classes.
+
             percent_difference = abs(capacitor_kv - expected_kv) / expected_kv * 100
             if percent_difference > VR6_VOLTAGE_TOLERANCE_PCT:
                 diagnostic_status = "VR6 mismatch"
@@ -1161,6 +1188,9 @@ def check_capacitors(capacitors, sections, transformers=None, nodes=None):
         capacitor_voltage_issues["RecommendedAction"] = (
             "Review capacitor RatedKv, connected SectionId, section voltage, and any upstream/downstream transformer voltage."
         )
+
+    # The report uses one CapacitorIssues sheet for VR5, VR6, and VR7. The RuleID
+    # column identifies which validation produced each row.
 
     capacitor_issues = pd.concat(
         [

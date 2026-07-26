@@ -19,6 +19,14 @@ from checks.capacitors import (
     _voltage_kv,
 )
 
+# VR8 / VR9 QUICK MAP
+    # - VR8 matches each regulator to InstSection by SectionId, then checks that the
+    #   regulator phases belong to that section and that available node fields agree.
+    # - VR9 checks two related items: the regulator should be downstream of a
+    #   transformer, and its voltage rating should match the applicable line voltage.
+    # Diagnostic rows are kept for every regulator; only confirmed position/voltage
+    # problems are added to the RegulatorIssues sheet.
+
 
 # Keep regulator voltage checking aligned with the capacitor voltage-class logic.
 # A 4.16 kV vs 12.47 kV mismatch should be caught, but tiny rounding differences should not.
@@ -566,6 +574,9 @@ def check_regulators(regulators, sections, transformers=None, nodes=None) -> dic
     print("========================")
     print(regulators.columns.tolist())
 
+    # Build a single regulator/section context table first. This prevents VR8 and
+    # VR9 from independently choosing different section columns or merge results.
+
     context, metadata = _build_regulator_section_context(regulators, sections)
     transformer_locations = build_transformer_locations(transformers, sections)
     section_context = _build_section_node_context(sections)
@@ -599,6 +610,10 @@ def check_regulators(regulators, sections, transformers=None, nodes=None) -> dic
         section_phases = _parse_regulator_phase_set(_series_value(row, section_phase_col)) if section_phase_col else set()
         section_found = bool(row.get("MatchedSectionFound", False))
 
+        # ---------------- VR8: section, phase, and node consistency ----------------
+        # A regulator may use fewer phases than the section, but it may not use a
+        # phase that the connected InstSection does not contain.
+
         vr8_issue_reasons = []
         if regulator_section_col and not section_found:
             vr8_issue_reasons.append("Regulator SectionId does not match any InstSection record")
@@ -620,6 +635,10 @@ def check_regulators(regulators, sections, transformers=None, nodes=None) -> dic
         if node_match is False:
             vr8_issue_reasons.append("Regulator node attributes do not align with connected section nodes")
 
+        # ---------------- VR9: transformer position and voltage ----------------
+        # The topology trace determines whether the nearest transformer is upstream
+        # (expected) or downstream/same-section (review issue).
+
         transformer_context = _nearest_transformer_context(
             regulator_section_id,
             transformer_locations,
@@ -632,6 +651,9 @@ def check_regulators(regulators, sections, transformers=None, nodes=None) -> dic
             if regulator_voltage_col
             else (np.nan, None)
         )
+        # Choose the best available line-voltage basis, then compare it with the
+        # regulator rating. LL/LN alternatives are considered to avoid false flags
+        # caused only by how the MDB stores single- versus three-phase voltage.
 
         line_voltage_context = _select_expected_line_voltage(
             row=row,
@@ -663,6 +685,8 @@ def check_regulators(regulators, sections, transformers=None, nodes=None) -> dic
                 voltage_issue = True
             else:
                 voltage_status = "VR9 voltage pass"
+        # Keep the inputs, selected columns, topology result, and voltage result for
+        # every regulator. This becomes the RegulatorContext audit sheet.
 
         diagnostic = {
             "RegulatorId": regulator_id,
@@ -693,6 +717,8 @@ def check_regulators(regulators, sections, transformers=None, nodes=None) -> dic
             **transformer_context,
         }
         diagnostic_rows.append(diagnostic)
+        # Issue sheets contain failures only; the diagnostic sheet above also
+        # contains passes and checks that could not run.
 
         if vr8_issue_reasons:
             temp = row.copy()
@@ -767,6 +793,8 @@ def check_regulators(regulators, sections, transformers=None, nodes=None) -> dic
         )
 
     regulator_issues = pd.concat([vr8_issues, vr9_issues], ignore_index=True, sort=False)
+
+    # VR8 and VR9 share one RegulatorIssues sheet; RuleID distinguishes the source.
 
     print("\n========================")
     print("REGULATOR SUMMARY")
